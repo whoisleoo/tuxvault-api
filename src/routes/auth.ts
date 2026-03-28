@@ -9,7 +9,7 @@ import { sendOtp } from '../services/mailer.js';
 
 const auth: Router = Router();
 
-const userSchema = z.object({
+const userSchema = z.object({   
     username: z.string(),
     password: z.string(),
 })
@@ -69,3 +69,43 @@ auth.post('/login', async (req: Request, res: Response) => {
 
 })
 
+
+
+auth.get('/approve/:id', async (req: Request, res: Response) => {
+    try{
+    const id = req.params['id'] as string;
+
+    if(!id){
+        return res.status(400).json({
+            error: "ID do usuário não informado."
+        })
+    }
+
+
+    const searchPending = await db.select().from(pendingTwoFa).where(eq(pendingTwoFa.id, id))
+
+    if(!searchPending[0]){
+        return res.status(401).json({
+            error: "Não existe nenhuma pendencia de verificação para esse usuário."
+        })
+    }
+
+    if(searchPending[0].expiresAt < new Date()){
+        res.status(410).json({
+            error: "Código expirado."
+        })
+    }
+
+    await db.update(pendingTwoFa).set({ approved: true }).where(eq(pendingTwoFa.id, id));
+
+    return res.status(200).json({
+        message: "Usuário aprovado."
+    })
+
+}catch(err){
+    res.status(500).json({
+        error: "Erro interno do servidor."
+    })
+}
+
+});
