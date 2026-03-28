@@ -12,8 +12,8 @@ import { createHash } from 'crypto';
 const auth: Router = Router();
 
 const userSchema = z.object({   
-    username: z.string(),
-    password: z.string(),
+    username: z.string().min(1, "O nome de usuário é obrigatório.").trim(),
+    password: z.string().min(1, "A senha é obrigatória").max(30, "A senha pode ter no máximo 30 caracteres."),
 })
 
 
@@ -99,7 +99,7 @@ auth.get('/approve/:id', async (req: Request, res: Response) => {
     }
 
     if(searchPending[0].expiresAt < new Date()){
-        res.status(410).json({
+        return res.status(410).json({
             error: "Código expirado."
         })
     }
