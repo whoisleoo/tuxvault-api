@@ -1,11 +1,10 @@
-const { execFile } = require('child_process');
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { writeFile, unlink } from 'fs/promises'
-import { datetime } from "drizzle-orm/mysql-core";
+import { readFile } from "fs/promises";
 
 
 const execFileAsync = promisify(execFile);
-const tempfilePath = `/tmp/tuxvault_${Date.now()}`;
 
 export async function sambaAuth(username: string, password: string){
     const isDevMode = process.env.DEV_MODE === 'true';
@@ -25,8 +24,36 @@ export async function sambaAuth(username: string, password: string){
     }
     // ABAIXO FICARA O SISTEMA SMBCLIENT
 
-    //  execFile('smbclient', ['-L', `${process.env.SERVER_IP}`, '-U', `${username}%${password}`, '-C', '-ls'];
-            
+    const tempfilePath = `/tmp/tuxvault_${Date.now()}`;
+
+    try{
+       
+
+        await writeFile(tempfilePath, `username=${username}\npassword=${password}\n`, { mode: 0o600 });
+    
+        await execFileAsync('smbclient', [
+            `//${process.env.SAMBA_HOST}/${process.env.SAMBA_SHARE}`,
+            '-A', tempfilePath,
+            '-c', 'quit'
+        ])   
+        
+        await unlink(tempfilePath);
+
+
+        const group = await readFile('/etc/group', 'utf-8');
+        const sudoLine = group.split('\n').find(line => line.startsWith('sudo:'));
+        const isAdmin = sudoLine?.split(':')[3]?.split(',').includes(username) ?? false;
+        const role = isAdmin ? 'admin' : 'user';
+
+        return { username, role };
+
+
+    }catch(err){
+        await unlink(tempfilePath).catch(() => {})
+        return null;
+    }
+
+        
         
     
 
