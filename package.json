@@ -22,7 +22,8 @@
     "drizzle-orm": "^0.44.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
-    "pg": "^8.16.0"
+    "pg": "^8.16.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/connect-pg-simple": "^7.0.3",
