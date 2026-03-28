@@ -2,23 +2,19 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { writeFile, unlink } from 'fs/promises'
 import { readFile } from "fs/promises";
+import { env } from '../config/env.js';
+
 
 
 const execFileAsync = promisify(execFile);
 
 export async function sambaAuth(username: string, password: string){
-    const isDevMode = process.env.DEV_MODE === 'true';
-    const adminUsername = process.env.DEV_ADMIN_USERNAME;
+    const isDevMode = env.DEV_MODE;
 
-    
-
-    if(!adminUsername){
-        throw new Error("DEV_ADMIN_USERNAME is not defined at .env");
-    }
 
     if(isDevMode){
         // Isso aqui vai ser só pra desenvolvimento LEMBRAR DE TIRAR PRA PRODUÇÃO PORQUE NÃO É NECESSÁRIO
-        const role = username === adminUsername ? 'admin' : 'user';
+        const role = username === env.DEV_ADMIN_USERNAME ? 'admin' : 'user';
 
         return { username, role };
     }

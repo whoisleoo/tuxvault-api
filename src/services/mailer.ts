@@ -1,4 +1,3 @@
-import { get } from 'http';
 import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
 
