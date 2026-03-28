@@ -13,6 +13,7 @@ const envSchema = z.object({
     SAMBA_SHARE: z.string().min(1),
     SMTP_TO: z.email(),
     HOST_SSH_USER: z.string().min(1),
+    APP_URL: z.string().url(),
     DEV_MODE: z.string().transform(v => v === 'true').default(false)
 
 })

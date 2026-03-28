@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 
 
 
-export const requireAuth = (req: Request, res: Response, next: NextFunction): Response | void =>{
+export const requireAdmin = (req: Request, res: Response, next: NextFunction): Response | void =>{
     const userSession = req.session.userId;
     const userRole = req.session.role;
 

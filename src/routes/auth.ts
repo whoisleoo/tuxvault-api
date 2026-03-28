@@ -5,7 +5,7 @@ import { pendingTwoFa, users } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { sambaAuth } from '../services/sambaAuth.js';
 import { sendOtp } from '../services/mailer.js';
-import { createHash } from 'crypto';
+import { randomInt, createHash } from 'crypto';
 
 
 
@@ -18,7 +18,7 @@ const userSchema = z.object({
 
 
 const verifySchema = z.object({
-    pendingId: z.uuid(),
+    pendingId: z.string().uuid(),
     otp: z.string().length(6)
 })
 
@@ -48,22 +48,23 @@ auth.post('/login', async (req: Request, res: Response) => {
         await db.insert(users).values({ username, role}).onConflictDoUpdate({ target: users.username, set: { lastLogin: new Date()}
         });
 
-        const requestOtp = await sendOtp(username);
+        const otp = randomInt(100000, 999999).toString();
+        const otpHash = createHash('sha256').update(otp).digest('hex');
 
         const [pending] = await db.insert(pendingTwoFa).values({
-            username: username,
-            otpHash: requestOtp,
+            username,
+            otpHash,
             ipAddress: userIp,
             expiresAt: new Date(Date.now() + 5 * 60 * 1000)
         }).returning();
-
 
         if(!pending){
             return res.status(500).json({
                 error: "Erro interno do servidor."
             })
         }
-        
+
+        await sendOtp(username, otp, pending.id);
 
         return res.status(200).json({
             pendingId: pending.id
@@ -107,7 +108,7 @@ auth.get('/approve/:id', async (req: Request, res: Response) => {
     await db.update(pendingTwoFa).set({ approved: true }).where(eq(pendingTwoFa.id, id));
 
     return res.status(200).json({
-        message: "Usuário aprovado."
+        message: "Usuário aprovado."    
     })
 
 }catch(err){
@@ -210,6 +211,8 @@ auth.post('/logout', async (req: Request, res: Response) => {
 
 
     }catch(err){
+        console.error(err)
+
         return res.status(500).json({
             message: "Erro interno do servidor."
         })
@@ -217,3 +220,6 @@ auth.post('/logout', async (req: Request, res: Response) => {
 
     
 });
+
+
+export default auth;
