@@ -1,0 +1,1 @@
+ALTER TABLE "pending_2fa" ADD COLUMN "otp_hash" text NOT NULL;
