@@ -12,7 +12,6 @@ export async function sambaAuth(username: string, password: string){
     const isDevMode = env.DEV_MODE;
 
 
-
     if(isDevMode){
         // Isso aqui vai ser só pra desenvolvimento LEMBRAR DE TIRAR PRA PRODUÇÃO PORQUE NÃO É NECESSÁRIO
         const role = username === env.DEV_ADMIN_USERNAME ? 'admin' : 'user';
