@@ -5,6 +5,8 @@ import { pendingTwoFa, users } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { sambaAuth } from '../services/sambaAuth.js';
 import { sendOtp } from '../services/mailer.js';
+import { createHash, hash } from 'crypto';
+
 
 
 const auth: Router = Router();
@@ -12,6 +14,12 @@ const auth: Router = Router();
 const userSchema = z.object({   
     username: z.string(),
     password: z.string(),
+})
+
+
+const verifySchema = z.object({
+    pendingId: z.string().uuid(),
+    otp: z.string().length(6)
 })
 
 auth.post('/login', async (req: Request, res: Response) => {
@@ -107,5 +115,69 @@ auth.get('/approve/:id', async (req: Request, res: Response) => {
         error: "Erro interno do servidor."
     })
 }
+
+});
+
+
+
+
+
+
+auth.post('/verify', async (req: Request, res: Response) => {
+    const result = verifySchema.safeParse(req.body);
+
+    if(!result.success){
+        return res.status(400).json({
+            message: "OOPS! Ocorreu um erro na tentativa de verificação."
+        })
+    }
+
+    try{
+        const { pendingId, otp } = result.data;
+
+        const searchPending = await db.select().from(pendingTwoFa).where(eq(pendingTwoFa.id, pendingId))
+
+
+        if(!searchPending[0]){
+            return res.status(404).json({
+                error: "Não existe nenhuma pendencia de verificação para esse usuário."
+            })
+        }
+
+        if(searchPending[0].expiresAt < new Date()){
+            res.status(410).json({
+                error: "Código expirado."
+            })
+        }
+
+
+        if(!searchPending[0].approved){
+            return res.status(403).json({
+                message: "Sua verificação ainda não foi aprovada."
+            })
+        }
+
+        const hashOtp = createHash('sha256').update(otp).digest('hex');
+
+        if(searchPending[0].otpHash !== hashOtp){
+            return res.status(401).json({
+                message: "Código inválido."
+            })
+        }
+
+        await db.delete(pendingTwoFa).where(eq(pendingTwoFa.id, pendingId))
+
+        
+
+
+
+
+    }catch(err){
+        res.status(500).json({
+            error: "Erro interno do servidor."
+        })
+    }
+ 
+
 
 });
