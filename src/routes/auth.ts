@@ -1,11 +1,11 @@
-import { Request, Response, NextFunction, Router } from 'express';
+import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db/index.js'
 import { pendingTwoFa, users } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { sambaAuth } from '../services/sambaAuth.js';
 import { sendOtp } from '../services/mailer.js';
-import { createHash, hash } from 'crypto';
+import { createHash } from 'crypto';
 
 
 
@@ -18,7 +18,7 @@ const userSchema = z.object({
 
 
 const verifySchema = z.object({
-    pendingId: z.string().uuid(),
+    pendingId: z.uuid(),
     otp: z.string().length(6)
 })
 
@@ -145,7 +145,7 @@ auth.post('/verify', async (req: Request, res: Response) => {
         }
 
         if(searchPending[0].expiresAt < new Date()){
-            res.status(410).json({
+            return res.status(410).json({
                 error: "Código expirado."
             })
         }
@@ -167,10 +167,21 @@ auth.post('/verify', async (req: Request, res: Response) => {
 
         await db.delete(pendingTwoFa).where(eq(pendingTwoFa.id, pendingId))
 
-        
+        const userRecord = await db.select().from(users).where(eq(users.username, searchPending[0].username));
 
+        if(!userRecord[0]){
+            return res.status(500).json({
+                error: "Erro interno do servidor."
+            })
+        }
 
+        req.session.userId = userRecord[0].id as string;
+        req.session.username = userRecord[0].username as string;
+        req.session.role = userRecord[0].role as 'user' | 'admin';
 
+        return res.status(200).json({
+            message: "Login realizado com sucesso."
+        })
 
     }catch(err){
         res.status(500).json({
@@ -180,4 +191,29 @@ auth.post('/verify', async (req: Request, res: Response) => {
  
 
 
+});
+
+
+auth.post('/logout', async (req: Request, res: Response) => {
+    try{
+
+        req.session.destroy((err) =>{
+            if(err){
+                return res.status(500).json({
+                    error: "Erro ao encerrar sessão."
+                })
+            }
+            return res.status(200).json({
+                message: "Logout realizado com sucesso."
+            })
+        });
+
+
+    }catch(err){
+        return res.status(500).json({
+            message: "Erro interno do servidor."
+        })
+    }
+
+    
 });
