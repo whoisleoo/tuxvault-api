@@ -28,6 +28,12 @@ auth.post('/login', async (req: Request, res: Response) => {
         const userIp = req.ip ?? null;
         const result = userSchema.safeParse(req.body);
 
+        if(!userIp){
+            return res.status(400).json({
+                message: "Falha em recuperar IP do usuário."
+            })
+        }
+
         if(!result.success){
             return res.status(400).json({
                 message: "Oops! Ocorreu um erro na tentativa de login."
@@ -64,7 +70,7 @@ auth.post('/login', async (req: Request, res: Response) => {
             })
         }
 
-        await sendOtp(username, otp, pending.id);
+        await sendOtp(username, otp, pending.id, userIp);
 
         return res.status(200).json({
             pendingId: pending.id

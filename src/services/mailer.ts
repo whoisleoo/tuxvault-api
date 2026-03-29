@@ -14,7 +14,7 @@ const transporter = nodemailer.createTransport({
     },
 })
 
-export async function sendOtp(username: string, otp: string, pendingId: string) {
+export async function sendOtp(username: string, otp: string, pendingId: string, userIp: string) {
   const approveUrl = `${env.APP_URL}/api/auth/approve/${pendingId}`;
 
   const mailOptions = {
@@ -50,6 +50,10 @@ export async function sendOtp(username: string, otp: string, pendingId: string) 
               <p style="margin:0 0 6px;color:#666666;font-size:10px;letter-spacing:4px;text-transform:uppercase;">Tentativa de acesso</p>
               <p style="margin:0 0 32px;color:#ffffff;font-size:20px;font-weight:bold;line-height:1.4;">
                 ${username}
+              </p>
+              <p style="margin:0 0 6px;color:#666666;font-size:10px;letter-spacing:4px;text-transform:uppercase;">IP do usuário</p>
+              <p style="margin:0 0 32px;color:#ffffff;font-size:20px;font-weight:bold;line-height:1.4;">
+                ${userIp}
               </p>
 
               <!-- Divider -->
