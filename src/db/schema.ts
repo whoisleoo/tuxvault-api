@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, bigint, timestamp, jsonb } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, bigint, timestamp, jsonb, index } from 'drizzle-orm/pg-core'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
@@ -25,7 +25,12 @@ export const files = pgTable('files', {
   trashedAt:     timestamp('trashed_at', { withTimezone: true }),
   createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => [
+  index('idx_files_parent_id').on(table.parentId),
+  index('idx_files_path').on(table.path),
+  index('idx_files_owner').on(table.ownerUsername),
+  index('idx_files_trash').on(table.inTrash),
+])
 
 export const pendingTwoFa = pgTable('pending_2fa', {
   id:        uuid('id').primaryKey().defaultRandom(),

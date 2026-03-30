@@ -15,6 +15,13 @@
       "when": 1774718762508,
       "tag": "0001_adorable_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774896525311,
+      "tag": "0002_bouncy_killer_shrike",
+      "breakpoints": true
     }
   ]
 }
