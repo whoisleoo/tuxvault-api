@@ -24,8 +24,8 @@ app.use(session({
     saveUninitialized: false,
     cookie: {
         httpOnly: true,
-        secure: false,    // TROCAR PRA TRUE QUANDO DER DEPLOY (numero do whatsapp do bernardo: 42999392482)
-        maxAge: 1000 * 60 * 60 * 8  // tempo de duração (cpf do bernardo: 154.283.293-02)
+        secure: false,    
+        maxAge: 1000 * 60 * 60 * 8 
     }
 }))
 
