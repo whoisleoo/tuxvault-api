@@ -1,0 +1,1 @@
+CREATE INDEX "idx_pending_username" ON "pending_2fa" USING btree ("username");

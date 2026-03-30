@@ -40,7 +40,9 @@ export const pendingTwoFa = pgTable('pending_2fa', {
   approved:  boolean('approved').notNull().default(false),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => [
+  index('idx_pending_username').on(table.username),
+])
 
 export const auditLog = pgTable('audit_log', {
   id:        uuid('id').primaryKey().defaultRandom(),

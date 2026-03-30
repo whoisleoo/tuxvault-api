@@ -28,11 +28,6 @@ auth.post('/login', async (req: Request, res: Response) => {
         const userIp = req.ip ?? null;
         const result = userSchema.safeParse(req.body);
 
-        if(!userIp){
-            return res.status(400).json({
-                message: "Falha em recuperar IP do usuário."
-            })
-        }
 
         if(!result.success){
             return res.status(400).json({
@@ -70,7 +65,7 @@ auth.post('/login', async (req: Request, res: Response) => {
             })
         }
 
-        await sendOtp(username, otp, pending.id, userIp);
+        await sendOtp(username, otp, pending.id, userIp ?? 'IP Desconhecido');
 
         return res.status(200).json({
             pendingId: pending.id
@@ -106,6 +101,8 @@ auth.get('/approve/:id', async (req: Request, res: Response) => {
     }
 
     if(searchPending[0].expiresAt < new Date()){
+        await db.delete(pendingTwoFa).where(eq(pendingTwoFa.id, id))
+
         return res.status(410).json({
             error: "Código expirado."
         })
@@ -152,6 +149,9 @@ auth.post('/verify', async (req: Request, res: Response) => {
         }
 
         if(searchPending[0].expiresAt < new Date()){
+            await db.delete(pendingTwoFa).where(eq(pendingTwoFa.id, pendingId))
+
+
             return res.status(410).json({
                 error: "Código expirado."
             })
