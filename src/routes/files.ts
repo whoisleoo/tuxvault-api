@@ -1,4 +1,3 @@
-import multer from 'multer'
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { files } from '../db/schema.js';
@@ -25,7 +24,7 @@ const uploadBodySchema = z.object({
 const file: Router = Router();
 
 
-file.get('/files', requireAuth, async (req: Request, res: Response) => {
+file.get('/', requireAuth, async (req: Request, res: Response) => {
     try{    
         const parentId = req.query.parentId as string | undefined;
 
@@ -57,8 +56,8 @@ file.post('/upload', requireAuth, upload.single('file'), async (req: Request, re
     try{    
 
         if(!req.file){
-            return res.status(401).json({
-                message: "Nenhum arquivo fornecido."
+            return res.status(400).json({
+                error: "Nenhum arquivo fornecido."
             })
         }
 
@@ -84,7 +83,7 @@ file.post('/upload', requireAuth, upload.single('file'), async (req: Request, re
 
             if(alreadyExists){
                 return res.status(409).json({
-                    error: "Já existe uma pasta com esse nome."
+                    error: "Já existe um arquivo com esse nome."
                 })
             }
 
@@ -263,3 +262,6 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
     }
 
 });
+
+
+export default file

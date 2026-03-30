@@ -1,12 +1,17 @@
 import multer from 'multer'
+import { randomBytes } from 'crypto'
+import * as path from 'path'
+import { env } from './env.js'
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, '/data/vault');
+        cb(null, env.VAULT_PATH)
     },
-    filename: (req, file, cb) =>{
-        cb(null, file.originalname)
+    filename: (req, file, cb) => {
+        const unique = `${Date.now()}-${randomBytes(6).toString('hex')}`
+        const ext = path.extname(file.originalname)
+        cb(null, `${unique}${ext}`)
     }
 })
 
-export const upload = multer({ storage: storage, limits: { fileSize: 15 * 1024 * 1024 * 1024}})
+export const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 * 1024 } })

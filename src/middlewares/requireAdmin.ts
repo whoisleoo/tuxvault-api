@@ -8,14 +8,14 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction): R
 
     if(!userSession){
         return res.status(401).json({
-            error: "Aceso negado.",
+            error: "Acesso negado.",
             message: "Essa sessão não existe ou é invalida."
         })
     }
 
     if(userRole !== 'admin'){
         return res.status(403).json({
-             error: "Aceso negado.",
+             error: "Acesso negado.",
             message: "Sua sessão não foi permitida pelo servidor."
         })
     }

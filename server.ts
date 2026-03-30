@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import router from './src/routes/routes.js';
 import authRouter from './src/routes/auth.js'
+import fileRouter from './src/routes/files.js'
 import session from 'express-session'
 import connectPgSimple from 'connect-pg-simple'
 import { pool } from './src/db/index.js'
@@ -35,6 +36,7 @@ app.get('/', (req, res) => {
 
 app.use('/api', router);
 app.use('/api/auth', authRouter)
+app.use('/api/files', fileRouter)
 
 app.listen(PORT, () => {
     console.log(`Tuxvault API is running at http://localhost:${PORT}`);

@@ -7,7 +7,7 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): Re
 
     if(!userSession){
         return res.status(401).json({
-            error: "Aceso negado.",
+            error: "Acesso negado.",
             message: "Essa sessão não existe ou é invalida."
         })
     }
