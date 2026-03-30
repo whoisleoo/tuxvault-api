@@ -217,7 +217,7 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
 
      if(!id){
         return res.status(404).json({
-            error: "ID não informado."
+            error: "Arquivo não informado."
         })
      }
 
@@ -262,6 +262,56 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
     }
 
 });
+
+
+
+
+
+
+
+
+file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
+    try{    
+        const id = req.params['id'] as string;
+
+        if(!id){
+            return res.status(404).json({
+                error: "Arquivo não informado."
+            })
+         }
+    
+    
+         const searchFile = await db.select().from(files).where(eq(files.id, id));
+
+         if(!searchFile[0]){
+            return res.status(404).json({
+                error: "Esse arquivo não existe ou está incorreto."
+            })
+         }
+
+         if(searchFile[0].inTrash){
+            return res.status(409).json({
+                error: "Esse arquivo já está na lixeira."
+            })
+         }
+
+
+        const [trashed] = await db.update(files).set({ inTrash: true, trashedAt: new Date( )}).where(eq(files.id, id)).returning();
+
+         return res.status(200).json({
+            trashed
+         })
+
+ 
+    } catch(err) {
+        if (err instanceof z.ZodError) {
+            return res.status(400).json({ error: err.issues })
+        }
+        res.status(500).json({ error: "Erro interno do servidor." })
+    }
+
+});
+
 
 
 export default file
