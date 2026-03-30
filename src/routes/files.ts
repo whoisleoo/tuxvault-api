@@ -7,7 +7,7 @@ import { upload } from '../config/multer.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import * as path from 'path';
 import { mkdir } from 'fs/promises';
-import { createReadStream } from 'fs';
+import { createReadStream, rename } from 'fs';
 import { env } from '../config/env.js';
 
 
@@ -19,6 +19,11 @@ const uploadBodySchema = z.object({
   const folderSchema = z.object({
     name: z.string().min(1).max(255),
     parentId: z.string().uuid().optional()
+})
+
+
+const renameSchema = z.object({
+    name: z.string().min(1).max(255),
 })
 
 const file: Router = Router();
@@ -301,6 +306,59 @@ file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
          return res.status(200).json({
             trashed
          })
+
+ 
+    } catch(err) {
+        if (err instanceof z.ZodError) {
+            return res.status(400).json({ error: err.issues })
+        }
+        res.status(500).json({ error: "Erro interno do servidor." })
+    }
+
+});
+
+
+
+
+
+file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
+    try{    
+        const id = req.params['id'] as string;
+        const { name } = renameSchema.parse(req.body);
+
+
+        if(!id){
+            return res.status(404).json({
+                message: "Arquivo não encontrado."
+            })
+        }
+
+        const searchFile = await db.select().from(files).where(eq(files.id, id));
+
+
+        if(!searchFile[0]){
+            return res.status(404).json({
+                error: "Esse arquivo não existe ou está incorreto."
+            })
+        }
+
+        const existing = await db.select().from(files).where(eq(files.id, id));
+
+        const alreadyExists = existing.find(f => f.name === name);
+
+        if(!alreadyExists){
+            return res.status(404).json({
+                error: "Já existe um arquivo com esse nome."
+            })
+        }
+        
+        const [rename] = await db.update(files).set({ name: name }).where(eq(files.id, id)).returning();
+
+        return res.status(200).json({
+            rename
+        })
+
+
 
  
     } catch(err) {
