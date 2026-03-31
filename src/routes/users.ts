@@ -5,6 +5,7 @@ import { db } from '../db/index.js'
 import { eq } from 'drizzle-orm'
 import { sambaUser } from '../services/sambaUser.js';
 import { requireAdmin } from '../middlewares/requireAdmin.js';
+import { logger } from '../config/logger.js';
 
 
 
@@ -14,16 +15,17 @@ const user: Router = Router();
 
 user.get('/', requireAdmin, async (req: Request, res: Response) => {
     try{        
-       const users = await sambaUser();
+        const sambaUsers = await sambaUser();
 
         return res.status(200).json({
-            users
+            sambaUsers
         })
 
 } catch(err) {
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
+    logger.error(err, 'Erro ao encontrar usuários.');
     res.status(500).json({ error: "Erro interno do servidor." })
 }
 
@@ -50,6 +52,7 @@ user.get('/:username', requireAdmin, async (req: Request, res: Response) => {
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
+    logger.error(err, 'Erro ao encontrar usuário.');
     res.status(500).json({ error: "Erro interno do servidor." })
 }
 
@@ -82,6 +85,7 @@ user.patch('/:username/role', requireAdmin, async (req: Request, res: Response) 
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
+    logger.error(err, 'Erro ao alterar cargo.');
     res.status(500).json({ error: "Erro interno do servidor." })
 }
 
@@ -116,6 +120,7 @@ user.delete('/:username', requireAdmin, async (req: Request, res: Response) => {
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
+    logger.error(err, 'Erro ao remover usuário.');
     res.status(500).json({ error: "Erro interno do servidor." })
 }
 

@@ -7,6 +7,7 @@ import { sambaAuth } from '../services/sambaAuth.js';
 import { sendOtp } from '../services/mailer.js';
 import { randomInt, createHash, randomBytes } from 'crypto';
 import { rateLimiter } from '../middlewares/rateLimiter.js';
+import { logger } from '../config/logger.js';
 
 
 const auth: Router = Router();
@@ -30,7 +31,7 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
 
         if(!result.success){
             return res.status(400).json({
-                message: "Oops! Ocorreu um erro na tentativa de login."
+                error: "Oops! Ocorreu um erro na tentativa de login."
             })
         }
 
@@ -74,6 +75,7 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
         })
 
     }catch(err){
+        logger.error(err, 'Erro ao realizar login.');
         res.status(500).json({
             error: "Erro interno do servidor."
         })
@@ -132,6 +134,7 @@ auth.get('/approve/:id', async (req: Request, res: Response) => {
     })
 
 }catch(err){
+    logger.error(err, 'Erro ao aprovar usuário.');
     res.status(500).json({
         error: "Erro interno do servidor."
     })
@@ -149,7 +152,7 @@ auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
 
     if(!result.success){
         return res.status(400).json({
-            message: "OOPS! Ocorreu um erro na tentativa de verificação."
+            error: "OOPS! Ocorreu um erro na tentativa de verificação."
         })
     }
 
@@ -208,6 +211,7 @@ auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
         })
 
     }catch(err){
+        logger.error(err, 'Erro ao verificar entrada de usuário.');
         res.status(500).json({
             error: "Erro interno do servidor."
         })
@@ -234,8 +238,7 @@ auth.post('/logout', async (req: Request, res: Response) => {
 
 
     }catch(err){
-        console.error(err)
-
+        logger.error(err, 'Erro ao realizar logout.');
         return res.status(500).json({
             message: "Erro interno do servidor."
         })

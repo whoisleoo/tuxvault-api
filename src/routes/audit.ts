@@ -2,9 +2,9 @@ import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { auditLog } from '../db/schema.js';
 import { db } from '../db/index.js'
-import { eq, isNull, and } from 'drizzle-orm'
 import { requireAuth } from '../middlewares/requireAuth.js';
 import { requireAdmin } from '../middlewares/requireAdmin.js';
+import { logger } from '../config/logger.js';
 
 
 
@@ -28,7 +28,8 @@ audit.get('/', requireAdmin, async (req: Request, res: Response) => {
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
-    res.status(500).json({ error: "Erro interno do servidor." })
+    logger.error(err, 'Erro ao procurar registros.');
+    res.status(500).json({ error: "Erro interno do servidor." });
 }
 
 });

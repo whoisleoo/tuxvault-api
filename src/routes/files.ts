@@ -10,6 +10,7 @@ import { mkdir } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { promises as fsp } from 'fs';
 import { env } from '../config/env.js';
+import { logger } from '../config/logger.js';
 
 
 
@@ -49,6 +50,7 @@ file.get('/', requireAuth, async (req: Request, res: Response) => {
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
+    logger.error(err, 'Erro ao procurar arquivos.');
     res.status(500).json({ error: "Erro interno do servidor." })
 }
 
@@ -58,77 +60,74 @@ file.get('/', requireAuth, async (req: Request, res: Response) => {
 
 
 
-file.post('/upload', requireAuth, upload.single('file'), async (req: Request, res: Response) => {
+file.post('/upload', requireAuth, upload.array('file', 20), async (req: Request, res: Response) => {
     try{    
+        const uploadedFiles = req.files as Express.Multer.File[];
 
-        if(!req.file){
+        if(!uploadedFiles || uploadedFiles.length === 0){
             return res.status(400).json({
                 error: "Nenhum arquivo fornecido."
             })
         }
 
+
         const { parentId } = uploadBodySchema.parse(req.body);
-        const extensionName = req.file.originalname.split('.').pop() ?? null;
 
         if(parentId){
-            const parentFolder = await db.select().from(files).where((eq(files.id, parentId)));
+            const parentFolder = await db.select().from(files).where(eq(files.id, parentId));
 
             if(!parentFolder[0]){
-                return res.status(404).json({error: "Pasta de destino não encontrada."})
+                return res.status(404).json({ error: "Pasta de destino não encontrada." })
             }
 
-            
             if(!parentFolder[0].isDirectory){
-                return res.status(404).json({error: "O destino não é uma pasta."})
+                return res.status(404).json({ error: "O destino não é uma pasta." })
             }
-
-            const existing = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.name, req.file.originalname))   );
-
-
-            if(existing[0]){
-                return res.status(409).json({
-                    error: "Já existe um arquivo com esse nome."
-                })
-            }
-
         }
 
+        const results = [];
+        for(const f of uploadedFiles) {
+            if(parentId) {
+                const existing = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.name, f.originalname)));
+                if(existing[0]) continue;
+            }
 
-      
+            const extensionName = f.originalname.split('.').pop() ?? null;
+            const [newFile] = await db.insert(files).values({
+                name: f.originalname,
+                path: f.path,
+                parentId: parentId ?? null,
+                isDirectory: false,
+                size: f.size,
+                mimeType: f.mimetype,
+                extension: extensionName,
+                ownerUsername: req.session.username!
+            }).returning();
 
-        const [newFile] = await db.insert(files).values({
-            name: req.file.originalname,
-            path: req.file.path,
-            parentId: parentId ?? null,
-            isDirectory: false,
-            size: req.file.size,
-            mimeType: req.file.mimetype,
-            extension: extensionName,
-            ownerUsername: req.session.username!
+            if(newFile) {
+                results.push(newFile);
+                await db.insert(auditLog).values({
+                    userId: req.session.userId,
+                    action: 'upload',
+                    fileId: newFile.id,
+                    fileName: newFile.name,
+                    filePath: newFile.path,
+                    ipAddress: req.ip ?? null
+                });
+            }
+        }
 
-        }).returning();
-
-
-        if(!newFile){
+        if(!results[0]){
             return res.status(500).json({
                 error: "Erro interno do servidor."
             })
         }
 
-        await db.insert(auditLog).values({
-            userId: req.session.userId,
-            action: 'upload',
-            fileId: newFile.id,
-            fileName: newFile.name,
-            filePath: newFile.path,
-            ipAddress: req.ip ?? null
-        });
-
     
 
 
         return res.status(201).json({
-            newFile
+            files: results
         })
 
 
@@ -137,10 +136,11 @@ file.post('/upload', requireAuth, upload.single('file'), async (req: Request, re
         if (err instanceof z.ZodError) {
             return res.status(400).json({ error: err.issues })
         }
+        logger.error(err, 'Erro ao fazer upload de arquivo.');
         res.status(500).json({ error: "Erro interno do servidor." })
     }
 
-});
+}); 
 
 
 
@@ -240,6 +240,7 @@ file.post('/folder', requireAuth, async (req: Request, res: Response) => {
         if (err instanceof z.ZodError) {
             return res.status(400).json({ error: err.issues })
         }
+        logger.error(err, 'Erro ao criar uma pasta.');
         res.status(500).json({ error: "Erro interno do servidor." })
     }
 
@@ -286,10 +287,14 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
 
      const stream = createReadStream(record.path);
 
-     stream.on('error', () => {
-        res.status(404).json({
-            error: "Arquivo não encontrado no disco."
-        })
+     stream.on('error', (err) => {
+        logger.error(err, "Erro ao fazer stream do arquivo.")
+        if(!res.headersSent){
+            res.status(500).json({
+                error: "Erro ao transmitir o arquivo."
+            })
+        }
+        
      })
 
      if(!record){
@@ -384,6 +389,7 @@ file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
         if (err instanceof z.ZodError) {
             return res.status(400).json({ error: err.issues })
         }
+        logger.error(err, 'Erro ao tentar realizar o download.');
         res.status(500).json({ error: "Erro interno do servidor." })
     }
 
@@ -460,6 +466,7 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
         if (err instanceof z.ZodError) {
             return res.status(400).json({ error: err.issues })
         }
+        logger.error(err, 'Erro ao renomear o arquivo.');
         res.status(500).json({ error: "Erro interno do servidor." })
     }
 
@@ -479,6 +486,7 @@ file.get('/trash', requireAuth, async (req: Request, res: Response) => {
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
+    logger.error(err, 'Erro ao mover para lixeira.');
     res.status(500).json({ error: "Erro interno do servidor." })
 }
 
@@ -499,7 +507,7 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
         }
 
         if (result[0].isDirectory) {
-            await fsp.rm(result[0].path, { recursive: true, force: true });
+            await fsp.rm(result[0].path, { recursive: true });
         } else {
             await fsp.unlink(result[0].path);
         }
@@ -528,6 +536,7 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
+    logger.error(err, 'Erro ao deletar permanentemente o arquivo.');
     res.status(500).json({ error: "Erro interno do servidor." })
 }
 
@@ -578,6 +587,7 @@ file.patch('/trash/:id/restore', requireAuth, async (req: Request, res: Response
     if (err instanceof z.ZodError) {
         return res.status(400).json({ error: err.issues })
     }
+    logger.error(err, 'Erro ao restaurar arquivo.');
     res.status(500).json({ error: "Erro interno do servidor." })
 }
 

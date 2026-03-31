@@ -11,6 +11,12 @@ import { env } from './src/config/env.js';
 import userRouter from './src/routes/users.js';
 import auditRouter from './src/routes/audit.js';
 import helmet from 'helmet';
+import { pendingTwoFa } from './src/db/schema.js';
+import { lt } from 'drizzle-orm';
+import { db } from './src/db/index.js';
+import { NextFunction, Request, Response } from 'express';
+import { logger } from './src/config/logger.js';
+
 
 
 
@@ -32,6 +38,7 @@ app.use(helmet());
 
 
 
+
 const PgStore = connectPgSimple(session)
 app.use(session({
     store: new PgStore({ pool, createTableIfMissing: true }),
@@ -44,6 +51,11 @@ app.use(session({
         maxAge: 1000 * 60 * 60 * 8 
     }
 }))
+
+
+setInterval(async () =>{
+    await db.delete(pendingTwoFa).where(lt(pendingTwoFa.expiresAt, new Date()))
+}, 60 * 1000)
 
 
 
@@ -62,6 +74,13 @@ app.use('/api/audit', auditRouter);
 
 
 
+// error handler global
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+    logger.error(err, 'Erro não tratado.');
+    res.status(500).json({
+        error: "Erro interno do servidor."
+    })
+})
 
 
 app.listen(PORT, () => {
