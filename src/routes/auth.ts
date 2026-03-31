@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { sambaAuth } from '../services/sambaAuth.js';
 import { sendOtp } from '../services/mailer.js';
 import { randomInt, createHash } from 'crypto';
+import { loginLimiter } from '../middlewares/rateLimiter.js';
 
 
 
@@ -22,7 +23,7 @@ const verifySchema = z.object({
     otp: z.string().length(6)
 })
 
-auth.post('/login', async (req: Request, res: Response) => {
+auth.post('/login', loginLimiter, async (req: Request, res: Response) => {
     
     try{
         const userIp = req.ip ?? null;

@@ -12,12 +12,14 @@ import userRouter from './src/routes/users.js';
 
 
 
+
 const PORT = process.env.PORT || 8080;
 const app = express();
 app.set('trust proxy', true);
 
 app.use(express.json());
 app.use(cors());
+
 
 const PgStore = connectPgSimple(session)
 app.use(session({
@@ -31,6 +33,11 @@ app.use(session({
         maxAge: 1000 * 60 * 60 * 8 
     }
 }))
+
+
+
+
+
 
 app.get('/', (req, res) => {
     res.json('Tuxvault API is online, if you are not an administrator, you must leave this page.');
