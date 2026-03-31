@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { auditLog } from '../db/schema.js';
 import { db } from '../db/index.js'
 import { eq, isNull, and } from 'drizzle-orm'
-import { sambaUser } from '../services/sambaUser.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import { requireAdmin } from '../middlewares/requireAdmin.js';
 
@@ -39,10 +38,6 @@ audit.get('/', requireAdmin, async (req: Request, res: Response) => {
 }
 
 });
-
-
-
-
 
 
 

@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
-import { files } from '../db/schema.js';
+import { files, auditLog } from '../db/schema.js';
 import { db } from '../db/index.js'
 import { eq, isNull, and } from 'drizzle-orm'
 import { upload } from '../config/multer.js';
@@ -111,6 +111,24 @@ file.post('/upload', requireAuth, upload.single('file'), async (req: Request, re
         }).returning();
 
 
+        if(!newFile){
+            return res.status(500).json({
+                error: "Erro interno do servidor."
+            })
+        }
+
+        await db.insert(auditLog).values({
+            userId: req.session.userId,
+            action: 'upload',
+            fileId: newFile.id,
+            fileName: newFile.name,
+            filePath: newFile.path,
+            ipAddress: req.ip ?? null
+        });
+
+    
+
+
         return res.status(201).json({
             newFile
         })
@@ -193,6 +211,27 @@ file.post('/folder', requireAuth, async (req: Request, res: Response) => {
         }).returning();
 
 
+
+        if(!newFolder){
+            return res.status(500).json({
+                error: "Erro interno do servidor."
+            })
+        }
+
+        await db.insert(auditLog).values({
+            userId: req.session.userId,
+            action: 'create_folder',
+            fileId: newFolder.id,
+            fileName: newFolder.name,
+            filePath: newFolder.path,
+            ipAddress: req.ip ?? null
+        });
+
+    
+
+
+
+
         return res.status(201).json({
             newFolder
         })
@@ -256,6 +295,23 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
         })
      })
 
+     if(!record){
+        return res.status(500).json({
+            error: "Erro interno do servidor."
+        })
+    }
+
+    await db.insert(auditLog).values({
+        userId: req.session.userId,
+        action: 'download',
+        fileId: record.id,
+        fileName: record.name,
+        filePath: record.path,
+        ipAddress: req.ip ?? null
+    });
+
+
+
 
      stream.pipe(res);
 
@@ -303,6 +359,24 @@ file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
 
 
         const [trashed] = await db.update(files).set({ inTrash: true, trashedAt: new Date( )}).where(eq(files.id, id)).returning();
+
+        if(!trashed){
+            return res.status(500).json({
+                error: "Erro interno do servidor."
+            })
+        }
+
+        await db.insert(auditLog).values({
+            userId: req.session.userId,
+            action: 'trash',
+            fileId: trashed.id,
+            fileName: trashed.name,
+            filePath: trashed.path,
+            ipAddress: req.ip ?? null
+        });
+
+    
+
 
          return res.status(200).json({
             trashed
@@ -360,6 +434,24 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
         
         const [rename] = await db.update(files).set({ name: name }).where(eq(files.id, id)).returning();
 
+        if(!rename){
+            return res.status(500).json({
+                error: "Erro interno do servidor."
+            })
+        }
+
+        await db.insert(auditLog).values({
+            userId: req.session.userId,
+            action: 'rename',
+            fileId: rename.id,
+            fileName: rename.name,
+            filePath: rename.path,
+            ipAddress: req.ip ?? null
+        });
+
+    
+
+
         return res.status(200).json({
             rename
         })
@@ -404,7 +496,7 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
         const result = await db.select().from(files).where(and(eq(files.id, id), eq(files.inTrash, true)));
 
         if(!result[0]){
-            return res.status(401).json({
+            return res.status(404).json({
                 error: "Não foi possivel encontrar esse arquivo."
             })
         }
@@ -412,6 +504,18 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
         await fsp.unlink(result[0].path);
 
         await db.delete(files).where(eq(files.id, id));
+
+
+        await db.insert(auditLog).values({
+            userId: req.session.userId,
+            action: 'deleted',
+            fileId: result[0].id,
+            fileName: result[0].name,
+            filePath: result[0].path,
+            ipAddress: req.ip ?? null
+        });
+
+    
 
 
         return res.status(200).json({ 
@@ -445,6 +549,24 @@ file.patch('/trash/:id/restore', requireAuth, async (req: Request, res: Response
 
 
         const [restored] = await db.update(files).set({ inTrash: false, trashedAt: null}).where(eq(files.id, id)).returning();
+
+
+        if(!restored){
+            return res.status(500).json({
+                error: "Erro interno do servidor."
+            })
+        }
+
+        await db.insert(auditLog).values({
+            userId: req.session.userId,
+            action: 'restore',
+            fileId: restored.id,
+            fileName: restored.name,
+            filePath: restored.path,
+            ipAddress: req.ip ?? null
+        });
+
+    
 
         return res.status(200).json({ 
             restored
