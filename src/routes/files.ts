@@ -295,7 +295,7 @@ file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
          }
 
          if(searchFile[0].inTrash){
-            return res.status(409).json({
+            return res.status(400).json({
                 error: "Esse arquivo já está na lixeira."
             })
          }
@@ -329,7 +329,7 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
 
         if(!id){
             return res.status(404).json({
-                message: "Arquivo não encontrado."
+                error: "Arquivo não encontrado."
             })
         }
 
@@ -342,12 +342,17 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
             })
         }
 
-        const existing = await db.select().from(files).where(eq(files.id, id));
+        if(searchFile[0].inTrash){
+            return res.status(400).json({
+                error: "Esse arquivo está na lixeira."
+            })
+         }
 
-        const alreadyExists = existing.find(f => f.name === name);
+        const parentId = searchFile[0].parentId;
+        const existing = parentId ? await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.name, name))) : await db.select().from(files).where(and(isNull(files.parentId), eq(files.name, name)));
 
-        if(!alreadyExists){
-            return res.status(404).json({
+        if(existing[0]){
+            return res.status(409).json({
                 error: "Já existe um arquivo com esse nome."
             })
         }
