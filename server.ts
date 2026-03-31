@@ -8,6 +8,8 @@ import session from 'express-session'
 import connectPgSimple from 'connect-pg-simple'
 import { pool } from './src/db/index.js'
 import { env } from './src/config/env.js';
+import userRouter from './src/routes/users.js';
+
 
 
 const PORT = process.env.PORT || 8080;
@@ -37,6 +39,9 @@ app.get('/', (req, res) => {
 app.use('/api', router);
 app.use('/api/auth', authRouter)
 app.use('/api/files', fileRouter)
+app.use('/api/users', userRouter);
+
+
 
 app.listen(PORT, () => {
     console.log(`Tuxvault API is running at http://localhost:${PORT}`);
