@@ -9,16 +9,27 @@ import connectPgSimple from 'connect-pg-simple'
 import { pool } from './src/db/index.js'
 import { env } from './src/config/env.js';
 import userRouter from './src/routes/users.js';
+import auditRouter from './src/routes/audit.js';
+import helmet from 'helmet';
 
 
+
+if (env.DEV_MODE) {
+    console.warn('ATENÇÃO: DEV_MODE está ativo, autenticação via SAMBA desativada.');
+}
 
 
 const PORT = process.env.PORT || 8080;
 const app = express();
-app.set('trust proxy', true);
-
+app.set('trust proxy', 1);
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: env.APP_URL,
+    credentials: true
+}));
+app.use(helmet());
+
+
 
 
 const PgStore = connectPgSimple(session)
@@ -29,7 +40,7 @@ app.use(session({
     saveUninitialized: false,
     cookie: {
         httpOnly: true,
-        secure: false,    
+        secure: env.NODE_ENV === 'production',    
         maxAge: 1000 * 60 * 60 * 8 
     }
 }))
@@ -47,6 +58,9 @@ app.use('/api', router);
 app.use('/api/auth', authRouter)
 app.use('/api/files', fileRouter)
 app.use('/api/users', userRouter);
+app.use('/api/audit', auditRouter);
+
+
 
 
 

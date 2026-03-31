@@ -13,18 +13,12 @@ const audit: Router = Router();
 
 
 audit.get('/', requireAdmin, async (req: Request, res: Response) => {
+    try{       
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = parseInt(req.query.offset as string) || 0; 
 
-    try{        
-        const id = req.query.id as string | undefined;
 
-        let result;
-
-        if(!id){
-            result = await db.select().from(auditLog);
-        }else{
-            result = await db.select().from(auditLog).where(eq(auditLog.userId, id));
-        }
-
+        const result = await db.select().from(auditLog).limit(limit).offset(offset).orderBy(auditLog.createdAt);
 
         return res.status(200).json({
             result

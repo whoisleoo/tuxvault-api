@@ -82,12 +82,10 @@ file.post('/upload', requireAuth, upload.single('file'), async (req: Request, re
                 return res.status(404).json({error: "O destino não é uma pasta."})
             }
 
-            const existing = await db.select().from(files).where(eq(files.parentId, parentId));
-
-            const alreadyExists = existing.find(f => f.name === req.file!.originalname)
+            const existing = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.name, req.file.originalname))   );
 
 
-            if(alreadyExists){
+            if(existing[0]){
                 return res.status(409).json({
                     error: "Já existe um arquivo com esse nome."
                 })
@@ -176,11 +174,10 @@ file.post('/folder', requireAuth, async (req: Request, res: Response) => {
                 return res.status(404).json({error: "O destino não é uma pasta."})
             }
 
-            const existing = await db.select().from(files).where(eq(files.parentId, parentId));
+            const existing = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.name, name)));
+            
 
-            const alreadyExists = existing.find(f => f.name === name);
-
-            if(alreadyExists){
+            if(existing[0]){
                 return res.status(409).json({
                     error: "Já existe uma pasta com esse nome."
                 })
@@ -284,7 +281,7 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
      const record = searchFile[0];
 
      res.setHeader('Content-Type', record.mimeType ?? 'application/octet-stream');
-     res.setHeader('Content-Disposition', `attachment; filename="${record.name}"`)
+     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}`);
      res.setHeader('Content-Length', record.size ?? 0);
 
      const stream = createReadStream(record.path);
@@ -501,7 +498,11 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
             })
         }
 
-        await fsp.unlink(result[0].path);
+        if (result[0].isDirectory) {
+            await fsp.rm(result[0].path, { recursive: true, force: true });
+        } else {
+            await fsp.unlink(result[0].path);
+        }
 
         await db.delete(files).where(eq(files.id, id));
 

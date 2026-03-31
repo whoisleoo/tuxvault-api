@@ -46,9 +46,9 @@ export const pendingTwoFa = pgTable('pending_2fa', {
 
 export const auditLog = pgTable('audit_log', {
   id:        uuid('id').primaryKey().defaultRandom(),
-  userId:    uuid('user_id').references(() => users.id),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
   action:    text('action').notNull(),
-  fileId:    uuid('file_id').references(() => files.id),
+  fileId: uuid('file_id').references(() => files.id, { onDelete: 'set null' }),
   fileName:  text('file_name').notNull(),
   filePath:  text('file_path').notNull(),
   extra:     jsonb('extra'),

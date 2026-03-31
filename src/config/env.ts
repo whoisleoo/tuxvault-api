@@ -15,9 +15,8 @@ const envSchema = z.object({
     HOST_SSH_USER: z.string().min(1),
     APP_URL: z.string().url(),
     DEV_MODE: z.string().transform(v => v === 'true').default(false),
-    VAULT_PATH: z.string().default('/data/vault')
-
-
+    VAULT_PATH: z.string().default('/data/vault'),
+    NODE_ENV: z.enum(['development', 'production']).default('development')
 })
  
 

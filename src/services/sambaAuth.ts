@@ -28,7 +28,7 @@ export async function sambaAuth(username: string, password: string){
         await writeFile(tempfilePath, `username=${username}\npassword=${password}\n`, { mode: 0o600 });
     
         await execFileAsync('smbclient', [
-            `//${process.env.SAMBA_HOST}/${process.env.SAMBA_SHARE}`,
+            `//${env.SAMBA_HOST}/${env.SAMBA_SHARE}`,
             '-A', tempfilePath,
             '-c', 'quit'
         ])   
