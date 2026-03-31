@@ -5,9 +5,8 @@ import { pendingTwoFa, users } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { sambaAuth } from '../services/sambaAuth.js';
 import { sendOtp } from '../services/mailer.js';
-import { randomInt, createHash } from 'crypto';
+import { randomInt, createHash, randomBytes } from 'crypto';
 import { rateLimiter } from '../middlewares/rateLimiter.js';
-
 
 
 const auth: Router = Router();
@@ -29,13 +28,14 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
         const userIp = req.ip ?? null;
         const result = userSchema.safeParse(req.body);
 
-
         if(!result.success){
             return res.status(400).json({
                 message: "Oops! Ocorreu um erro na tentativa de login."
             })
         }
 
+        const approveToken = randomBytes(32).toString('hex');
+        const approveTokenHash = createHash('sha256').update(approveToken).digest('hex');
         const { username, password } = result.data;
 
         const resultAuth = await sambaAuth(username, password);
@@ -56,6 +56,7 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
         const [pending] = await db.insert(pendingTwoFa).values({
             username,
             otpHash,
+            approveTokenHash,
             ipAddress: userIp,
             expiresAt: new Date(Date.now() + 5 * 60 * 1000)
         }).returning();
@@ -66,7 +67,7 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
             })
         }
 
-        await sendOtp(username, otp, pending.id, userIp ?? 'IP Desconhecido');
+        await sendOtp(username, otp, pending.id, approveToken, userIp ?? 'IP Desconhecido');    
 
         return res.status(200).json({
             pendingId: pending.id
@@ -85,12 +86,21 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
 auth.get('/approve/:id', async (req: Request, res: Response) => {
     try{
     const id = req.params['id'] as string;
+    const token = req.query.token as string;
+
+    if(!token){
+        return res.status(400).json({
+            error: "Token não informado."
+        })
+    }
 
     if(!id){
         return res.status(400).json({
             error: "ID do usuário não informado."
         })
     }
+
+    const tokenHash = createHash('sha256').update(token).digest('hex');
 
 
     const searchPending = await db.select().from(pendingTwoFa).where(eq(pendingTwoFa.id, id))
@@ -108,6 +118,12 @@ auth.get('/approve/:id', async (req: Request, res: Response) => {
             error: "Código expirado."
         })
     }
+
+    if (searchPending[0].approveTokenHash !== tokenHash) {
+        return res.status(401).json({ error: "Token inválido."});
+    }
+
+
 
     await db.update(pendingTwoFa).set({ approved: true }).where(eq(pendingTwoFa.id, id));
 

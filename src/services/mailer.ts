@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 
 
 
+
 const transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
@@ -14,14 +15,16 @@ const transporter = nodemailer.createTransport({
     },
 })
 
-export async function sendOtp(username: string, otp: string, pendingId: string, userIp: string) {
-  const approveUrl = `${env.APP_URL}/api/auth/approve/${pendingId}`;
+export async function sendOtp(username: string, otp: string, pendingId: string, approveToken: string, userIp: string) {
+  const approveUrl = `${env.APP_URL}/api/auth/approve/${pendingId}?token=${approveToken}`;
+  const escapeHtml = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
 
   const mailOptions = {
     from: env.SMTP_USER,
     to: env.SMTP_TO,
     subject: 'Tux Vault OTP',
-    text: `Usuário ${username} está tentando logar. Código: ${otp}. Aprovar: ${approveUrl}`,
+    text: `Usuário ${escapeHtml(username)} está tentando logar. Código: ${otp}. Aprovar: ${approveUrl}`,
     html: `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -49,11 +52,11 @@ export async function sendOtp(username: string, otp: string, pendingId: string, 
               <!-- Title -->
               <p style="margin:0 0 6px;color:#666666;font-size:10px;letter-spacing:4px;text-transform:uppercase;">Tentativa de acesso</p>
               <p style="margin:0 0 32px;color:#ffffff;font-size:20px;font-weight:bold;line-height:1.4;">
-                ${username}
+                ${escapeHtml(username)}
               </p>
               <p style="margin:0 0 6px;color:#666666;font-size:10px;letter-spacing:4px;text-transform:uppercase;">IP do usuário</p>
               <p style="margin:0 0 32px;color:#ffffff;font-size:20px;font-weight:bold;line-height:1.4;">
-                ${userIp}
+                ${escapeHtml(userIp)}
               </p>
 
               <!-- Divider -->

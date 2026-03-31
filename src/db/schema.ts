@@ -37,6 +37,7 @@ export const pendingTwoFa = pgTable('pending_2fa', {
   username:  text('username').notNull(),
   ipAddress: text('ip_address'),
   otpHash: text('otp_hash').notNull(),
+  approveTokenHash: text('approve_token_hash').notNull(),
   approved:  boolean('approved').notNull().default(false),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

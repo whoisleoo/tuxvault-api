@@ -3,6 +3,7 @@ import { promisify } from "util";
 import { writeFile, unlink } from 'fs/promises'
 import { readFile } from "fs/promises";
 import { env } from '../config/env.js';
+import { randomBytes } from "crypto";
 
 
 
@@ -20,7 +21,8 @@ export async function sambaAuth(username: string, password: string){
     }
     // ABAIXO FICARA O SISTEMA SMBCLIENT
 
-    const tempfilePath = `/tmp/tuxvault_${Date.now()}`;
+    const tempfilePath = `/tmp/tuxvault_${randomBytes(8).toString('hex')}`;
+
 
     try{
        

@@ -36,6 +36,13 @@
       "when": 1774976021986,
       "tag": "0004_swift_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774976683123,
+      "tag": "0005_melodic_devos",
+      "breakpoints": true
     }
   ]
 }

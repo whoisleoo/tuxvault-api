@@ -18,7 +18,7 @@ const uploadBodySchema = z.object({
   });
 
   const folderSchema = z.object({
-    name: z.string().min(1).max(255),
+    name: z.string().min(1).max(255).refine((val) => !/(\/|\\|\.\.)/.test(val),{ message: "Nome de pasta inválido." }),
     parentId: z.string().uuid().optional()
 })
 
@@ -38,9 +38,9 @@ file.get('/', requireAuth, async (req: Request, res: Response) => {
 
 
         if(!parentId){
-            result = await db.select().from(files).where(and(isNull(files.parentId), eq(files.inTrash, false)))
+            result = await db.select().from(files).where(and(isNull(files.parentId), eq(files.inTrash, false), eq(files.ownerUsername, req.session.username!)))
         }else{
-            result = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.inTrash, false)))
+            result = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.inTrash, false), eq(files.ownerUsername, req.session.username!)))
         }
 
         return res.status(200).json(result);
@@ -264,7 +264,7 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
      }
 
 
-     const searchFile = await db.select().from(files).where(eq(files.id, id));
+     const searchFile = await db.select().from(files).where(and(eq(files.id, id), eq(files.ownerUsername, req.session.username!)))
      
      if(!searchFile[0]){
         return res.status(404).json({
@@ -340,7 +340,7 @@ file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
          }
     
     
-         const searchFile = await db.select().from(files).where(eq(files.id, id));
+         const searchFile = await db.select().from(files).where(and(eq(files.id, id), eq(files.ownerUsername, req.session.username!)))
 
          if(!searchFile[0]){
             return res.status(404).json({
@@ -405,7 +405,7 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
             })
         }
 
-        const searchFile = await db.select().from(files).where(eq(files.id, id));
+        const searchFile = await db.select().from(files).where(and(eq(files.id, id), eq(files.ownerUsername, req.session.username!)))
 
 
         if(!searchFile[0]){
@@ -470,7 +470,7 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
 
 file.get('/trash', requireAuth, async (req: Request, res: Response) => {
     try{    
-        const result = await db.select().from(files).where(eq(files.inTrash, true));
+        const result = await db.select().from(files).where(and(eq(files.inTrash, true), eq(files.ownerUsername, req.session.username!)));
 
 
         return res.status(200).json(result);
@@ -490,7 +490,7 @@ file.get('/trash', requireAuth, async (req: Request, res: Response) => {
 file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Response) => {
     try{    
         const id = req.params['id'] as string;
-        const result = await db.select().from(files).where(and(eq(files.id, id), eq(files.inTrash, true)));
+        const result = await db.select().from(files).where(and(eq(files.id, id), eq(files.inTrash, true), eq(files.ownerUsername, req.session.username!)));
 
         if(!result[0]){
             return res.status(404).json({
@@ -540,7 +540,7 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
 file.patch('/trash/:id/restore', requireAuth, async (req: Request, res: Response) => {
     try{    
         const id = req.params['id'] as string;
-        const result = await db.select().from(files).where(and(eq(files.id, id), eq(files.inTrash, true)));
+        const result = await db.select().from(files).where(and(eq(files.id, id), eq(files.inTrash, true), eq(files.ownerUsername, req.session.username!)));
 
         if(!result[0]){
             return res.status(404).json({
