@@ -7,7 +7,8 @@ import { upload } from '../config/multer.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import * as path from 'path';
 import { mkdir } from 'fs/promises';
-import { createReadStream, rename } from 'fs';
+import { createReadStream } from 'fs';
+import { promises as fsp } from 'fs';
 import { env } from '../config/env.js';
 
 
@@ -375,6 +376,89 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
 
 });
 
+
+
+
+file.get('/trash', requireAuth, async (req: Request, res: Response) => {
+    try{    
+        const result = await db.select().from(files).where(eq(files.inTrash, true));
+
+
+        return res.status(200).json(result);
+
+} catch(err) {
+    if (err instanceof z.ZodError) {
+        return res.status(400).json({ error: err.issues })
+    }
+    res.status(500).json({ error: "Erro interno do servidor." })
+}
+
+});
+
+
+
+
+file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Response) => {
+    try{    
+        const id = req.params['id'] as string;
+        const result = await db.select().from(files).where(and(eq(files.id, id), eq(files.inTrash, true)));
+
+        if(!result[0]){
+            return res.status(401).json({
+                error: "Não foi possivel encontrar esse arquivo."
+            })
+        }
+
+        await fsp.unlink(result[0].path);
+
+        await db.delete(files).where(eq(files.id, id));
+
+
+        return res.status(200).json({ 
+            message: "Arquivo deletado permanentemente." 
+        });
+
+
+} catch(err) {
+    if (err instanceof z.ZodError) {
+        return res.status(400).json({ error: err.issues })
+    }
+    res.status(500).json({ error: "Erro interno do servidor." })
+}
+
+});
+
+
+
+
+
+file.patch('/trash/:id/restore', requireAuth, async (req: Request, res: Response) => {
+    try{    
+        const id = req.params['id'] as string;
+        const result = await db.select().from(files).where(and(eq(files.id, id), eq(files.inTrash, true)));
+
+        if(!result[0]){
+            return res.status(404).json({
+                error: "Não foi possivel encontrar esse arquivo."
+            })
+        }
+
+
+        const [restored] = await db.update(files).set({ inTrash: false, trashedAt: null}).where(eq(files.id, id)).returning();
+
+        return res.status(200).json({ 
+            restored
+        });
+
+
+} catch(err) {
+    if (err instanceof z.ZodError) {
+        return res.status(400).json({ error: err.issues })
+    }
+    res.status(500).json({ error: "Erro interno do servidor." })
+}
+
+});
 
 
 export default file
