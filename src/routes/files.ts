@@ -2,11 +2,11 @@ import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { files, auditLog } from '../db/schema.js';
 import { db } from '../db/index.js'
-import { eq, isNull, and, inArray } from 'drizzle-orm'
+import { eq, isNull, and, inArray, sum } from 'drizzle-orm'
 import { upload } from '../config/multer.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import * as path from 'path';
-import { mkdir } from 'fs/promises';
+import { mkdir, statfs} from 'fs/promises';
 import { createReadStream } from 'fs';
 import { promises as fsp } from 'fs';
 import { env } from '../config/env.js';
@@ -338,22 +338,56 @@ file.get('/preview/:id', requireAuth, async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Não é possível visualizar uma pasta." })
         }
 
+        const range = req.headers.range;
         const record = searchFile[0];
+        const fileSize = record.size ?? 0;
 
+        res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Content-Type', record.mimeType ?? 'application/octet-stream');
         res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(record.name)}`);
         res.setHeader('Content-Length', record.size ?? 0);
 
-        const stream = createReadStream(record.path);
 
-        stream.on('error', (err) => {
-            logger.error(err, 'Erro ao fazer stream do preview.');
-            if(!res.headersSent){
-                res.status(500).json({ error: "Erro ao transmitir o arquivo." })
+        if(range){
+            const parts = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(parts[0]!, 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+
+            if(start >= fileSize || end >= fileSize){
+                res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+                return res.end();
             }
-        });
 
-        stream.pipe(res);
+            const chunkSize = (end - start ) + 1;
+            const stream = createReadStream(record.path, { start, end });
+
+            res.writeHead(206, {
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Content-Length': chunkSize,
+            })
+
+            stream.on('error', (err) => {
+                logger.error(err, 'Erro ao fazer stream do preview.');
+                if (!res.headersSent) res.status(500).json({ error: "Erro ao transmitir o arquivo." });
+            });
+
+            stream.pipe(res)
+
+        }else{
+            const stream = createReadStream(record.path);
+            
+            stream.on('error', (err) => {
+                logger.error(err, 'Erro ao fazer stream do preview.');
+                if (!res.headersSent) res.status(500).json({ error: "Erro ao transmitir o arquivo." });
+            });
+
+            stream.pipe(res);
+        
+        }
+
+
+       
 
     } catch(err) {
         if (err instanceof z.ZodError) {
@@ -678,6 +712,37 @@ file.patch('/:id/favorite', requireAuth, async (req: Request, res: Response) => 
         res.status(500).json({ error: "Erro interno do servidor." });
     }
 });
+
+
+
+file.get('/storage', requireAuth, async (req: Request, res: Response) => {
+    try {
+    
+       const storageResult = await db.select({ total: sum(files.size) }).from(files).where(and(eq(files.ownerUsername, req.session.username!), eq(files.isDirectory, false)));
+
+       if(!storageResult[0]){
+        return res.status(400).json({
+            error: "Erro ao recuperar armazenamento total."
+        })
+       }
+
+       const used = Number(storageResult[0].total ?? 0);
+       const total = env.VAULT_MAX_SIZE_GB * 1024 * 1024 * 1024;
+       const free = total - used;
+
+       return res.status(200).json({
+        used, total, free
+       })
+
+    } catch (err) {
+        if (err instanceof z.ZodError) {
+            return res.status(400).json({ error: err.issues });
+        }
+        logger.error(err, 'Erro ao encontrar armazenamento.');
+        res.status(500).json({ error: "Erro interno do servidor." });
+    }
+});
+
 
 
 export default file

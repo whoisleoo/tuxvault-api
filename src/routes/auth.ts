@@ -126,8 +126,14 @@ auth.get('/approve/:id', rateLimiter, async (req: Request, res: Response) => {
     }
 
 
+    const [approved] = await db.update(pendingTwoFa).set({ approved: true }).where(eq(pendingTwoFa.id, id)).returning();
 
-    await db.update(pendingTwoFa).set({ approved: true }).where(eq(pendingTwoFa.id, id));
+    if(!approved){
+        return res.status(500).json({
+            error: "Erro interno no servidor."
+        })
+    }
+    
 
     return res.status(200).json({
         message: "Usuário aprovado."    
@@ -151,7 +157,7 @@ auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
     const result = verifySchema.safeParse(req.body);
 
     if(!result.success){
-        return res.status(400).json({
+        return res.status(401).json({
             error: "OOPS! Ocorreu um erro na tentativa de verificação."
         })
     }
@@ -180,7 +186,7 @@ auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
 
         if(!searchPending[0].approved){
             return res.status(403).json({
-                message: "Sua verificação ainda não foi aprovada."
+                error: "Sua verificação ainda não foi aprovada."
             })
         }
 

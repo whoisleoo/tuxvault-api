@@ -50,6 +50,13 @@
       "when": 1775050395441,
       "tag": "0006_happy_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775051353898,
+      "tag": "0007_deep_rogue",
+      "breakpoints": true
     }
   ]
 }

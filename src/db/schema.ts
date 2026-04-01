@@ -14,7 +14,7 @@ export const files = pgTable('files', {
   id:            uuid('id').primaryKey().defaultRandom(),
   name:          text('name').notNull(),
   path:          text('path').unique().notNull(),
-  parentId:      uuid('parent_id').references((): AnyPgColumn => files.id),
+  parentId: uuid('parent_id').references((): AnyPgColumn => files.id, { onDelete: 'cascade' }),
   isDirectory:   boolean('is_directory').notNull(),
   size:          bigint('size', { mode: 'number' }),
   mimeType:      text('mime_type'),
