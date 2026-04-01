@@ -2,7 +2,7 @@ import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { files, auditLog } from '../db/schema.js';
 import { db } from '../db/index.js'
-import { eq, isNull, and, inArray } from 'drizzle-orm'
+import { eq, isNull, and, inArray, sql } from 'drizzle-orm'
 import { upload } from '../config/multer.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import * as path from 'path';
@@ -376,13 +376,29 @@ file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) =
 
      const record = searchFile[0];
 
+     const treeResult = await db.execute(sql`
+        WITH RECURSIVE tree AS (
+            SELECT id, name, path AS disk_path, is_directory, parent_id,
+                   name::text AS rel_path
+            FROM files
+            WHERE id = ${id} AND owner_username = ${req.session.username!}
+
+            UNION ALL
+
+            SELECT f.id, f.name, f.path AS disk_path, f.is_directory, f.parent_id,
+                   (tree.rel_path || '/' || f.name)::text AS rel_path
+            FROM files f
+            INNER JOIN tree ON f.parent_id = tree.id
+            WHERE f.owner_username = ${req.session.username!}
+        )
+        SELECT disk_path, rel_path FROM tree WHERE is_directory = false
+     `);
+
      const archive = archiver('zip', { zlib: { level: 9 }});
      archive.on('error', (err) =>{
         logger.error(err, 'Erro ao criar pasta ZIP');
         if(!res.headersSent) res.status(500).json({ error: "Erro ao criar ZIP"})
      })
-
-
 
     await db.insert(auditLog).values({
         userId: req.session.userId,
@@ -393,13 +409,16 @@ file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) =
         ipAddress: req.ip ?? null
     });
 
-
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}.zip`);
 
     archive.pipe(res);
-    archive.directory(record.path, false);
-     await archive.finalize();
+
+    for (const row of treeResult.rows as { disk_path: string; rel_path: string }[]) {
+        archive.file(row.disk_path, { name: row.rel_path });
+    }
+
+    await archive.finalize();
 
 
 
@@ -836,15 +855,19 @@ file.get('/storage', requireAuth, async (req: Request, res: Response) => {
 file.post('/upload-folder', requireAuth, upload.array('file', 500), async (req: Request, res: Response) => {
     try {
         const uploadedFiles = req.files as Express.Multer.File[];
-        const rawPaths = req.body['paths[]'];
-        const relativePaths: string[] = Array.isArray(rawPaths) ? rawPaths : [rawPaths];
 
         if (!uploadedFiles || uploadedFiles.length === 0) {
             return res.status(400).json({ error: "Nenhum arquivo fornecido." });
         }
 
-        if (!relativePaths || relativePaths.length !== uploadedFiles.length) {
-            return res.status(400).json({ error: "Paths dos arquivos não informados corretamente"});
+        let relativePaths: string[];
+        try {
+            relativePaths = JSON.parse(req.body.paths);
+            if (!Array.isArray(relativePaths) || relativePaths.length !== uploadedFiles.length) {
+                return res.status(400).json({ error: "Paths dos arquivos não informados corretamente." });
+            }
+        } catch {
+            return res.status(400).json({ error: "Paths dos arquivos não informados corretamente." });
         }
 
         const { parentId } = uploadBodySchema.parse(req.body);
@@ -968,9 +991,15 @@ file.post('/upload-folder', requireAuth, upload.array('file', 500), async (req: 
 });
 
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 file.get('/folders/:id/size', requireAuth, async (req: Request, res: Response) => {
     const id = req.params['id'] as string;
     const username = req.session.username!
+
+    if (!UUID_REGEX.test(id)) {
+        return res.status(400).json({ error: 'ID inválido.' })
+    }
 
     try {
         const size = await getStorageFolder(id, username)
