@@ -52,11 +52,13 @@ app.use(session({
     }
 }))
 
-
-setInterval(async () =>{
-    await db.delete(pendingTwoFa).where(lt(pendingTwoFa.expiresAt, new Date()))
-}, 60 * 1000)
-
+setInterval(async () => {
+    try {
+        await db.delete(pendingTwoFa).where(lt(pendingTwoFa.expiresAt, new Date()));
+    } catch(err) {
+        logger.error(err, 'Erro ao limpar código de dois fatores expirados.');
+    }
+}, 60 * 1000);
 
 
 

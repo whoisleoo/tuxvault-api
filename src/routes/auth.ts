@@ -85,7 +85,7 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
 
 
 
-auth.get('/approve/:id', async (req: Request, res: Response) => {
+auth.get('/approve/:id', rateLimiter, async (req: Request, res: Response) => {
     try{
     const id = req.params['id'] as string;
     const token = req.query.token as string;

@@ -7,8 +7,8 @@ const envSchema = z.object({
     SMTP_PASS: z.string(),
     DEV_ADMIN_USERNAME: z.string(),
     PORT: z.coerce.number(),
-    DATABASE_URL: z.url(),
-    SESSION_SECRET: z.string().min(1),
+    DATABASE_URL: z.string().min(1),
+    SESSION_SECRET: z.string().min(32),
     SAMBA_HOST: z.string().min(1),
     SAMBA_SHARE: z.string().min(1),
     SMTP_TO: z.email(),
@@ -16,7 +16,8 @@ const envSchema = z.object({
     APP_URL: z.string().url(),
     DEV_MODE: z.string().transform(v => v === 'true').default(false),
     VAULT_PATH: z.string().default('/data/vault'),
-    NODE_ENV: z.enum(['development', 'production']).default('development')
+    NODE_ENV: z.enum(['development', 'production']).default('development'),
+    UPLOAD_MAX_SIZE_GB: z.string().transform(v => parseInt(v)).default(15)
 })
  
 
