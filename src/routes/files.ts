@@ -11,6 +11,7 @@ import { createReadStream } from 'fs';
 import { promises as fsp } from 'fs';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { getStorageInfo } from '../services/storage.js';
 
 
 
@@ -83,6 +84,17 @@ file.post('/upload', requireAuth, upload.array('file', 20), async (req: Request,
                 return res.status(404).json({ error: "O destino não é uma pasta." })
             }
         }
+
+        const { used, total } = await getStorageInfo(req.session.username!);
+        const incomingSize = uploadedFiles.reduce((acc, f) => acc + f.size, 0);
+
+        if(used + incomingSize > total){
+            return res.status(507).json({
+                error: "Armazenamento insuficiente."
+            })
+        }
+
+
 
 
         const fileNames = uploadedFiles.map(f => f.originalname);
@@ -717,23 +729,13 @@ file.patch('/:id/favorite', requireAuth, async (req: Request, res: Response) => 
 
 file.get('/storage', requireAuth, async (req: Request, res: Response) => {
     try {
-    
-       const storageResult = await db.select({ total: sum(files.size) }).from(files).where(and(eq(files.ownerUsername, req.session.username!), eq(files.isDirectory, false)));
+        const storage = await getStorageInfo(req.session.username!);
 
-       if(!storageResult[0]){
-        return res.status(400).json({
-            error: "Erro ao recuperar armazenamento total."
+        return res.status(200).json({
+            storage
         })
-       }
 
-       const used = Number(storageResult[0].total ?? 0);
-       const total = env.VAULT_MAX_SIZE_GB * 1024 * 1024 * 1024;
-       const free = total - used;
-
-       return res.status(200).json({
-        used, total, free
-       })
-
+      
     } catch (err) {
         if (err instanceof z.ZodError) {
             return res.status(400).json({ error: err.issues });
