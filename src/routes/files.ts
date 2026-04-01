@@ -2,16 +2,19 @@ import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { files, auditLog } from '../db/schema.js';
 import { db } from '../db/index.js'
-import { eq, isNull, and, inArray, sum } from 'drizzle-orm'
+import { eq, isNull, and, inArray } from 'drizzle-orm'
 import { upload } from '../config/multer.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import * as path from 'path';
-import { mkdir, statfs} from 'fs/promises';
+import { mkdir} from 'fs/promises';
 import { createReadStream } from 'fs';
 import { promises as fsp } from 'fs';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { getStorageInfo } from '../services/storage.js';
+import archiver from 'archiver';
+
+
 
 
 
@@ -96,8 +99,9 @@ file.post('/upload', requireAuth, upload.array('file', 20), async (req: Request,
 
 
 
+        
+        const fileNames = uploadedFiles.map(f => Buffer.from(f.originalname, 'latin1').toString('utf8'));
 
-        const fileNames = uploadedFiles.map(f => f.originalname);
 
 
         const existingFiles = parentId ? await db.select({ name: files.name }).from(files).where(and(eq(files.parentId, parentId), inArray(files.name, fileNames)))
@@ -108,11 +112,12 @@ file.post('/upload', requireAuth, upload.array('file', 20), async (req: Request,
 
         const results = [];
         for(const f of uploadedFiles) {
-            if(existingNames.has(f.originalname)) continue
+            const originalname = Buffer.from(f.originalname, 'latin1').toString('utf-8');
+            if(existingNames.has(originalname)) continue
 
-            const extensionName = f.originalname.split('.').pop() ?? null;
+            const extensionName = originalname.split('.').pop() ?? null;
             const [newFile] = await db.insert(files).values({
-                name: f.originalname,
+                name: originalname,
                 path: f.path,
                 parentId: parentId ?? null,
                 isDirectory: false,
@@ -334,6 +339,84 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
     }
 
 });
+
+
+
+
+
+
+
+
+
+file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) => {
+    try{    
+     const id = req.params['id'] as string;
+
+     if(!id){
+        return res.status(404).json({
+            error: "Arquivo não informado."
+        })
+     }
+
+
+     const searchFile = await db.select().from(files).where(and(eq(files.id, id), eq(files.ownerUsername, req.session.username!)))
+     
+     if(!searchFile[0]){
+        return res.status(404).json({
+            error: "Esse arquivo não existe ou está incorreto."
+        })
+     }
+
+     if(!searchFile[0].isDirectory){
+        return res.status(400).json({
+            error: "Esse item não é uma pasta."
+        })
+     }
+
+     const record = searchFile[0];
+
+     const archive = archiver('zip', { zlib: { level: 9 }});
+     archive.on('error', (err) =>{
+        logger.error(err, 'Erro ao criar pasta ZIP');
+        if(!res.headersSent) res.status(500).json({ error: "Erro ao criar ZIP"})
+     })
+
+
+
+    await db.insert(auditLog).values({
+        userId: req.session.userId,
+        action: 'download_zip',
+        fileId: record.id,
+        fileName: record.name,
+        filePath: record.path,
+        ipAddress: req.ip ?? null
+    });
+
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}.zip`);
+
+    archive.pipe(res);
+    archive.directory(record.path, false);
+     await archive.finalize();
+
+
+
+    } catch(err) {  
+        if (err instanceof z.ZodError) {
+            return res.status(400).json({ error: err.issues })
+        }
+        res.status(500).json({ error: "Erro interno do servidor." })
+    }
+
+});
+
+
+
+
+
+
+
 
 
 file.get('/preview/:id', requireAuth, async (req: Request, res: Response) => {
