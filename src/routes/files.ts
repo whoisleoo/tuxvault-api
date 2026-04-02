@@ -7,14 +7,13 @@ import { upload } from '../config/multer.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import * as path from 'path';
 import { mkdir} from 'fs/promises';
-import { createReadStream } from 'fs';
 import { promises as fsp } from 'fs';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { getStorageInfo } from '../services/storage.js';
 import archiver from 'archiver';
 import { getStorageFolder } from '../services/folderStorage.js';
-import { findOwned, validateParent, checkQuota } from '../services/fileService.js';
+import { findOwned, validateParent, checkQuota, pipeFile, setDownloadHeaders, findDuplicate, uploadFolderService } from '../services/fileService.js';
 import { audit } from '../services/auditHelper.js';
 import { handleError } from '../utils/errorHandler.js';
 
@@ -159,7 +158,7 @@ file.post('/folder', requireAuth, async (req: Request, res: Response) => {
         if(parentId){
             const parentFolder = await validateParent(parentId, req.session.username!)
 
-            const existing = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.name, name)));
+            const existing = await findDuplicate(name, parentId);
 
 
             if(existing[0]){
@@ -237,25 +236,11 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
         })
      }
 
-     res.setHeader('Content-Type', record.mimeType ?? 'application/octet-stream');
-     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}`);
-     res.setHeader('Content-Length', record.size ?? 0);
-
-     const stream = createReadStream(record.path);
-
-     stream.on('error', (err) => {
-        logger.error(err, "Erro ao fazer stream do arquivo.")
-        if(!res.headersSent){
-            res.status(500).json({
-                error: "Erro ao transmitir o arquivo."
-            })
-        }
-
-     })
+     setDownloadHeaders(res, record)
 
     await audit(req, 'download', record)
 
-     stream.pipe(res);
+     pipeFile(res, record.path);
 
 
     } catch(err) {
@@ -366,30 +351,15 @@ file.get('/preview/:id', requireAuth, async (req: Request, res: Response) => {
             }
 
             const chunkSize = (end - start ) + 1;
-            const stream = createReadStream(record.path, { start, end });
-
             res.writeHead(206, {
                 'Content-Range': `bytes ${start}-${end}/${fileSize}`,
                 'Content-Length': chunkSize,
             })
 
-            stream.on('error', (err) => {
-                logger.error(err, 'Erro ao fazer stream do preview.');
-                if (!res.headersSent) res.status(500).json({ error: "Erro ao transmitir o arquivo." });
-            });
-
-            stream.pipe(res)
+            pipeFile(res, record.path, { start, end })
 
         }else{
-            const stream = createReadStream(record.path);
-            
-            stream.on('error', (err) => {
-                logger.error(err, 'Erro ao fazer stream do preview.');
-                if (!res.headersSent) res.status(500).json({ error: "Erro ao transmitir o arquivo." });
-            });
-
-            stream.pipe(res);
-        
+            pipeFile(res, record.path)
         }
 
 
@@ -452,7 +422,7 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
          }
 
         const parentId = record.parentId;
-        const existing = parentId ? await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.name, name))) : await db.select().from(files).where(and(isNull(files.parentId), eq(files.name, name)));
+        const existing = await findDuplicate(name, parentId);
 
         if(existing[0]){
             return res.status(409).json({
@@ -652,81 +622,10 @@ file.post('/upload-folder', requireAuth, upload.array('file', 500), async (req: 
         }
 
 
-        const folderIdMap = new Map<string, { id: string; path: string }>();
+        const results = await uploadFolderService(uploadedFiles, relativePaths, basePath, baseParentId, req.session.username!)
 
-        const allDirs = [...new Set(
-            relativePaths.map(p => path.dirname(p)).filter(d => d !== '.'))].sort((a, b) => a.split('/').length - b.split('/').length);
-
-        for (const dir of allDirs) {
-            const parts = dir.split('/');
-            let currentParentId: string | null = baseParentId;
-            let currentBasePath = basePath;
-
-            for (let i = 0; i < parts.length; i++) {
-                const segment = parts[i]!;
-                const segmentKey = parts.slice(0, i + 1).join('/');
-
-                if (folderIdMap.has(segmentKey)) {
-                    const cached = folderIdMap.get(segmentKey)!;
-                    currentBasePath = cached.path;
-                    currentParentId = cached.id;
-                    continue;
-                }
-
-                const folderPath = path.join(currentBasePath, segment);
-                await mkdir(folderPath, { recursive: true });
-
-                const existingInDb = currentParentId
-                    ? await db.select().from(files).where(and(eq(files.parentId, currentParentId), eq(files.name, segment)))
-                    : await db.select().from(files).where(and(isNull(files.parentId), eq(files.name, segment)));
-
-                let folderId: string;
-
-                if (existingInDb[0]) {
-                    folderId = existingInDb[0].id;
-                } else {
-                    const [newFolder] = await db.insert(files).values({
-                        name: segment,
-                        path: folderPath,
-                        parentId: currentParentId,
-                        isDirectory: true,
-                        ownerUsername: req.session.username!
-                    }).returning();
-                    folderId = newFolder!.id;
-                }
-
-                folderIdMap.set(segmentKey, { id: folderId, path: folderPath });
-                currentParentId = folderId;
-                currentBasePath = folderPath;
-            }
-        }
-
-
-        const results = [];
-        for (let i = 0; i < uploadedFiles.length; i++) {
-            const f = uploadedFiles[i]!;
-            const relativePath = relativePaths[i]!;
-            const originalname = Buffer.from(f.originalname, 'latin1').toString('utf8');
-            const dir = path.dirname(relativePath);
-            const fileParentId = dir === '.' ? baseParentId : (folderIdMap.get(dir)?.id ?? baseParentId);
-            const extensionName = originalname.split('.').pop() ?? null;
-
-            const [newFile] = await db.insert(files).values({
-                name: originalname,
-                path: f.path,
-                parentId: fileParentId,
-                isDirectory: false,
-                size: f.size,
-                mimeType: f.mimetype,
-                extension: extensionName,
-                ownerUsername: req.session.username!
-            }).returning();
-
-
-            if (newFile) {
-                results.push(newFile);
-                await audit(req, 'upload', newFile)
-            }
+        for (const newFile of results) {
+            await audit(req, 'upload', newFile)
         }
 
         return res.status(201).json({ files: results });
