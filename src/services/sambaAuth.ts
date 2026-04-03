@@ -8,17 +8,26 @@ import { randomBytes } from "crypto";
 
 const execFileAsync = promisify(execFile);
 
+
+/*
+*       !ALERTA   
+*       Quaisquer tentativas de login serão aceitas se DEV_MODE
+*       estiver marcado como TRUE no .env
+*       
+*       Para que o login via Samba funcione, o linux server deve
+*       ter o sistema samba com usuários cadastrados.
+*       
+*/
+
 export async function sambaAuth(username: string, password: string){
     const isDevMode = env.DEV_MODE;
 
 
     if(isDevMode){
-        // Isso aqui vai ser só pra desenvolvimento LEMBRAR DE TIRAR PRA PRODUÇÃO PORQUE NÃO É NECESSÁRIO
         const role = username === env.DEV_ADMIN_USERNAME ? 'admin' : 'user';
 
         return { username, role };
     }
-    // ABAIXO FICARA O SISTEMA SMBCLIENT
 
     const tempfilePath = `/tmp/tuxvault_${randomBytes(8).toString('hex')}`;
 

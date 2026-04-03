@@ -1,3 +1,5 @@
+
+
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -17,8 +19,18 @@ import { db } from './src/db/index.js';
 import { NextFunction, Request, Response } from 'express';
 import { logger } from './src/config/logger.js';
 
-
-
+/*
+*    TUX VAULT (PT-BR)
+*    Tux Vault é uma alternativa do google drive 
+*    sendo sua principal vantagem ser open-source,
+*    facilmente adaptavel com qualquer servidor linux
+*    que contenha Samba como gerenciador de usuários.
+* 
+* 
+*    Desenvolvido por: @whoisleoo
+*    Considere colaborar com o projeto.
+* 
+*/
 
 if (env.DEV_MODE) {
     console.warn('ATENÇÃO: DEV_MODE está ativo, autenticação via SAMBA desativada.');
@@ -76,7 +88,12 @@ app.use('/api/audit', auditRouter);
 
 
 
-// error handler global
+/*
+*    Error Handler global, funciona como um middleware
+*    global para todo o servidor, caso um erro não tenha sido
+*    tratado em uma das rotas, ele provavelmente vai ser mostrado por esse handler.
+*    
+*/
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     logger.error(err, 'Erro não tratado.');
     res.status(500).json({

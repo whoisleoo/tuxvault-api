@@ -104,3 +104,5 @@ export async function sendOtp(username: string, otp: string, pendingId: string, 
     throw Error("Ocorreu um erro ao tentar enviar o email.");
   }
 }
+
+

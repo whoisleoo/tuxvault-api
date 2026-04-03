@@ -8,6 +8,8 @@ import { sendOtp } from '../services/mailer.js';
 import { randomInt, createHash, randomBytes } from 'crypto';
 import { rateLimiter } from '../middlewares/rateLimiter.js';
 import { logger } from '../config/logger.js';
+import { handleError } from '../utils/errorHandler.js';
+import { requireAuth } from '../middlewares/requireAuth.js';
 
 
 const auth: Router = Router();
@@ -75,12 +77,8 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
         })
 
     }catch(err){
-        logger.error(err, 'Erro ao realizar login.');
-        res.status(500).json({
-            error: "Erro interno do servidor."
-        })
+        return handleError(res, err, 'Erro ao realizar login.')
     }
-
 })
 
 
@@ -140,10 +138,7 @@ auth.get('/approve/:id', rateLimiter, async (req: Request, res: Response) => {
     })
 
 }catch(err){
-    logger.error(err, 'Erro ao aprovar usuário.');
-    res.status(500).json({
-        error: "Erro interno do servidor."
-    })
+    return handleError(res, err, 'Erro ao aprovar usuário.')
 }
 
 });
@@ -217,10 +212,7 @@ auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
         })
 
     }catch(err){
-        logger.error(err, 'Erro ao verificar entrada de usuário.');
-        res.status(500).json({
-            error: "Erro interno do servidor."
-        })
+        return handleError(res, err, 'Erro ao verificar entrada.')
     }
  
 
@@ -244,14 +236,28 @@ auth.post('/logout', async (req: Request, res: Response) => {
 
 
     }catch(err){
-        logger.error(err, 'Erro ao realizar logout.');
-        return res.status(500).json({
-            message: "Erro interno do servidor."
-        })
+        return handleError(res, err, 'Erro ao realizar logout.')
     }
 
     
 });
+
+
+
+auth.get('/me', requireAuth, async (req: Request, res: Response) => {
+    try{
+        const username = req.session.username
+        const role = req.session.role
+
+        return res.status(200).json({
+            user: {username, role}
+        })
+
+    }catch(err){
+        return handleError(res, err, 'Erro ao buscar usuário.')
+    }
+})
+  
 
 
 export default auth;

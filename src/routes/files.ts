@@ -13,7 +13,7 @@ import { logger } from '../config/logger.js';
 import { getStorageInfo } from '../services/storage.js';
 import archiver from 'archiver';
 import { getStorageFolder } from '../services/folderStorage.js';
-import { findOwned, validateParent, checkQuota, pipeFile, setDownloadHeaders, findDuplicate, uploadFolderService } from '../services/fileService.js';
+import { findOwned, validateParent, checkQuota, pipeFile, setDownloadHeaders, findDuplicate, uploadFolderService, generateCopyName, copyFolderService } from '../services/fileService.js';
 import { audit } from '../services/auditHelper.js';
 import { handleError } from '../utils/errorHandler.js';
 
@@ -120,9 +120,9 @@ file.post('/upload', requireAuth, upload.array('file', 20), async (req: Request,
             }
         }
 
-        if(!results[0]){
-            return res.status(500).json({
-                error: "Erro interno do servidor."
+        if(!results.length){
+            return res.status(409).json({
+                error: "Todos os arquivos já existem no destino."
             })
         }
 
@@ -274,17 +274,17 @@ file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) =
                    name::text AS rel_path
             FROM files
             WHERE id = ${id} AND owner_username = ${req.session.username!}
-
+    
             UNION ALL
-
+    
             SELECT f.id, f.name, f.path AS disk_path, f.is_directory, f.parent_id,
                    (tree.rel_path || '/' || f.name)::text AS rel_path
             FROM files f
             INNER JOIN tree ON f.parent_id = tree.id
             WHERE f.owner_username = ${req.session.username!}
         )
-        SELECT disk_path, rel_path FROM tree WHERE is_directory = false
-     `);
+        SELECT disk_path, rel_path, is_directory FROM tree
+    `);
 
      const archive = archiver('zip', { zlib: { level: 9 }});
      archive.on('error', (err) =>{
@@ -297,12 +297,26 @@ file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) =
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}.zip`);
 
-    archive.pipe(res);
+    type TreeRow = { disk_path: string; rel_path: string; is_directory: boolean }
+    const rows    = treeResult.rows as TreeRow[]
+    const files   = rows.filter(r => !r.is_directory)
+    const dirs    = rows.filter(r =>  r.is_directory)
+    
+    const emptyDirs = dirs.filter(dir =>
+       !files.some(f => f.rel_path.startsWith(dir.rel_path + '/'))
+    )
+    
 
-    for (const row of treeResult.rows as { disk_path: string; rel_path: string }[]) {
+    archive.pipe(res);
+    
+    for (const row of files) {
         archive.file(row.disk_path, { name: row.rel_path });
     }
-
+    
+    for (const dir of emptyDirs) {
+        archive.append(Buffer.alloc(0), { name: dir.rel_path + '/' });
+    }
+    
     await archive.finalize();
 
 
@@ -657,6 +671,70 @@ file.get('/folders/:id/size', requireAuth, async (req: Request, res: Response) =
         logger.error(err, 'Erro ao calcular tamanho da pasta.')
         return res.status(500).json({ error: 'Erro interno do servidor.' })
     }
+})
+
+
+
+
+
+
+file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
+    try{
+        const id = req.params['id'] as string
+        const record = await findOwned(id, req.session.username!);
+
+        if(record.inTrash){
+            return res.status(400).json({
+                error: "Arquivo está na lixeira."
+            })
+        }
+
+        const siblings = await findDuplicate('', record.parentId).then(() => record.parentId ? db.select({ name: files.name }).from(files).where(and(eq(files.parentId, record.parentId), eq(files.inTrash, false)))
+    : db.select({ name: files.name }).from(files).where(and(isNull(files.parentId), eq(files.inTrash, false), eq(files.ownerUsername, req.session.username!)))
+    )
+
+
+    const copyName = generateCopyName(record.name, siblings)
+    const parentPath = path.dirname(record.path);
+
+
+    if(!record.isDirectory){
+        await checkQuota(req.session.username!, record.size ?? 0)
+
+        const newPath = path.join(parentPath, copyName);
+
+        await fsp.copyFile(record.path, newPath);
+        const [newFile ] = await await db.insert(files).values({
+            name: copyName,
+            path: newPath,
+            parentId: record.parentId,
+            isDirectory: false,
+            size: record.size, 
+            mimeType: record.mimeType,
+            extension: record.extension, 
+            ownerUsername: req.session.username!
+        }).returning()
+
+        await audit(req, 'copy', newFile!);
+        return res.status(201).json({
+            file: newFile
+        })
+    }
+
+    const newFolder = await copyFolderService(id, req.session.username!, copyName, record.parentId, parentPath);
+    await audit(req, 'copy', record);
+
+    return res.status(201).json({
+        folderId: newFolder?.id
+    })
+
+
+
+    }catch(err){
+        return handleError(res, err, 'Erro ao copiar arquivo.')
+
+    }
+
 })
 
 

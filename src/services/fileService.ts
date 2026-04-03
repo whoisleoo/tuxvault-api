@@ -1,12 +1,13 @@
 import { db } from '../db/index.js'
 import { files } from '../db/schema.js'
-import { eq, and, isNull } from 'drizzle-orm'
+import { eq, and, isNull, sql } from 'drizzle-orm'
 import { getStorageInfo } from './storage.js';
 import { createReadStream } from 'fs';
 import { mkdir } from 'fs/promises';
 import * as path from 'path';
 import { logger } from '../config/logger.js';
 import { Request, Response } from 'express';
+import * as fsp from 'fs/promises';
 
 
 export class NotFoundError extends Error {}
@@ -145,4 +146,72 @@ export async function uploadFolderService(
 
         return await tx.insert(files).values(fileValues).returning();
     });
+}
+
+
+
+
+export function generateCopyName(sourceName: string, siblings: {name: string}[]): string {
+    const base = sourceName.replace(/ \(Copy\)(\(\d+\))*$/, '').trim() + ' (Copy)'
+    if(!siblings.some(s => s.name === base)) return base;
+    let i = 1;
+
+    while(siblings.some(s => s.name === `${base}(${i})`)) i++;
+    return `${base}(${i})`
+
+}
+
+
+export async function copyFolderService(sourceId: string, username: string, copyName: string, destParentId: string | null, destParentPath: string){
+    const treeResult = await db.execute(sql`
+        WITH RECURSIVE tree AS (
+            SELECT id, name, path AS disk_path, is_directory, parent_id,
+                   size, mime_type, extension, 0 AS depth
+            FROM files
+            WHERE id = ${sourceId}
+            UNION ALL
+            SELECT f.id, f.name, f.path, f.is_directory, f.parent_id,
+                   f.size, f.mime_type, f.extension, tree.depth + 1
+            FROM files f
+            INNER JOIN tree ON f.parent_id = tree.id
+        )
+        SELECT * FROM tree ORDER BY depth
+    `)
+
+
+    type Node = { id: string; name: string; disk_path: string; is_directory: boolean; parent_id: string | null; size: number | null; mime_type: string | null; extension: string | null }
+    const nodes = treeResult.rows as Node[]
+
+    return await db.transaction(async (tx) => {
+        const idMap = new Map<string, { id: string; path: string }>()
+
+        for (const node of nodes) {
+            const isRoot   = node.id === sourceId
+            const newName  = isRoot ? copyName : node.name
+            const parentEntry = node.parent_id ? idMap.get(node.parent_id) : null
+            const newParentId   = isRoot ? destParentId   : (parentEntry?.id   ?? destParentId)
+            const newParentPath = isRoot ? destParentPath : (parentEntry?.path ?? destParentPath)
+            const newPath  = path.join(newParentPath, newName)
+
+            if (node.is_directory) {
+                await mkdir(newPath, { recursive: true })
+                const [newDir] = await tx.insert(files).values({
+                    name: newName, path: newPath,
+                    parentId: newParentId, isDirectory: true,
+                    ownerUsername: username
+                }).returning()
+                idMap.set(node.id, { id: newDir!.id, path: newPath })
+            } else {
+                await fsp.copyFile(node.disk_path, newPath)
+                await tx.insert(files).values({
+                    name: newName, path: newPath,
+                    parentId: newParentId, isDirectory: false,
+                    size: node.size, mimeType: node.mime_type,
+                    extension: node.extension, ownerUsername: username
+                })
+            }
+        }
+
+        return idMap.get(sourceId)
+    })
 }
