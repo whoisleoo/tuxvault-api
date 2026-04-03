@@ -45,6 +45,16 @@ export const pendingTwoFa = pgTable('pending_2fa', {
   index('idx_pending_username').on(table.username),
 ])
 
+export const blockedIps = pgTable('blocked_ips', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  ip:        text('ip').unique().notNull(),
+  reason:    text('reason').notNull().default('honeypot'),
+  blockedAt: timestamp('blocked_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+}, (table) => [
+  index('idx_blocked_ips_ip').on(table.ip),
+])
+
 export const auditLog = pgTable('audit_log', {
   id:        uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),

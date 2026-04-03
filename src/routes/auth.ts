@@ -243,7 +243,6 @@ auth.post('/logout', async (req: Request, res: Response) => {
 });
 
 
-
 auth.get('/me', requireAuth, async (req: Request, res: Response) => {
     try{
         const username = req.session.username

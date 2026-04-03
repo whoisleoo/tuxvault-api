@@ -9,7 +9,6 @@ import { logger } from '../config/logger.js';
 
 
 
-
 const user: Router = Router();
 
 
@@ -125,7 +124,6 @@ user.delete('/:username', requireAdmin, async (req: Request, res: Response) => {
 }
 
 }); 
-
 
 
 export default user

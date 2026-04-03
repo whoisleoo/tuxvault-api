@@ -57,6 +57,13 @@
       "when": 1775051353898,
       "tag": "0007_deep_rogue",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775236948571,
+      "tag": "0008_wakeful_shriek",
+      "breakpoints": true
     }
   ]
 }

@@ -34,6 +34,10 @@ const renameSchema = z.object({
     name: z.string().min(1).max(255).refine((val) => !/(\/|\\|\.\.)/.test(val),{ message: "Nome inválido." }),
 })
 
+const moveSchema = z.object({
+    targetId: z.union([z.string().uuid(), z.null()])
+})
+
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -82,11 +86,13 @@ file.post('/upload', requireAuth, upload.array('file', 20), async (req: Request,
         if(parentId) await validateParent(parentId, req.session.username!)
 
         const incomingSize = uploadedFiles.reduce((acc, f) => acc + f.size, 0);
-        await checkQuota(req.session.username!, incomingSize)
+        try {
+            await checkQuota(req.session.username!, incomingSize)
+        } catch (quotaErr) {
+            await Promise.allSettled(uploadedFiles.map(f => fsp.unlink(f.path)))
+            throw quotaErr
+        }
 
-
-
-        
         const fileNames = uploadedFiles.map(f => Buffer.from(f.originalname, 'latin1').toString('utf8'));
 
 
@@ -735,6 +741,81 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
 
     }
 
+})
+
+
+
+
+
+
+
+file.patch('/:id/move', requireAuth, async (req: Request, res: Response) => {
+    try{
+
+        const id = req.params['id'] as string;
+        const { targetId } = moveSchema.parse(req.body)
+        const record = await findOwned(id, req.session.username!)
+
+
+
+        if (record.inTrash){
+            return res.status(400).json({ error: "Arquivo está na lixeira." })
+        }
+
+
+        if (record.parentId === targetId){ 
+            return res.status(400).json({ error: "O item já está nessa pasta." })
+        }
+
+
+        if (record.id === targetId){
+            return res.status(400).json({ error: "Não é possível mover uma pasta para dentro de si mesma." })
+        } 
+
+
+        let destPath = env.VAULT_PATH
+
+        if (targetId) {
+            const target = await validateParent(targetId, req.session.username!)
+
+
+            if (record.isDirectory && target.path.startsWith(record.path + '/')) {
+                return res.status(400).json({ error: "Não é possível mover uma pasta para dentro de um de seus subdiretórios." })
+            }
+
+            destPath = target.path
+        }
+
+        const existing = await findDuplicate(record.name, targetId)
+        if (existing[0]){
+            return res.status(409).json({ error: "Já existe um item com esse nome no destino." })
+        }
+
+
+        const oldPath = record.path
+        const newPath = path.join(destPath, record.name)
+
+        await fsp.rename(oldPath, newPath)
+
+        await db.transaction(async (tx) => {
+            await tx.update(files).set({ parentId: targetId, path: newPath, updatedAt: new Date() }).where(eq(files.id, id))
+
+            if (record.isDirectory) {
+                await tx.execute(sql`
+                    UPDATE files
+                    SET path = ${newPath} || SUBSTR(path, ${oldPath.length + 1})
+                    WHERE path LIKE ${oldPath + '/%'}
+                    AND owner_username = ${req.session.username!}
+                `)
+            }
+        })
+
+        await audit(req, 'move', record)
+        return res.status(200).json({ message: "Item movido com sucesso." })
+
+    } catch(err) {
+        return handleError(res, err, 'Erro ao mover arquivo.')
+    }
 })
 
 

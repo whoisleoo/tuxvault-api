@@ -4,7 +4,11 @@
     "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "esModuleInterop": false,
+    "esModuleInterop": true,
+
+    /* JSON Support - Adicione estas duas linhas */
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": false,
 
     /* File Layout */
     "rootDir": "./",
