@@ -12,6 +12,32 @@ import { logger } from '../config/logger.js';
 const audit: Router = Router();
 
 
+/**
+ * @swagger
+ * /api/audit:
+ *   get:
+ *     summary: Lista registros de auditoria
+ *     tags: [Audit]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           maximum: 100
+ *           default: 50
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       200:
+ *         description: Lista de logs de auditoria
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão de admin
+ */
 audit.get('/', requireAdmin, async (req: Request, res: Response) => {
     try{       
         const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);

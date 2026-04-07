@@ -10,6 +10,7 @@ import { rateLimiter } from '../middlewares/rateLimiter.js';
 import { logger } from '../config/logger.js';
 import { handleError } from '../utils/errorHandler.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
+import { banIp } from '../middlewares/blacklistIp.js';
 
 
 const auth: Router = Router();
@@ -25,6 +26,41 @@ const verifySchema = z.object({
     otp: z.string().length(6)
 })
 
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Inicia o fluxo de login com autenticação 2FA
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, password]
+ *             properties:
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *                 maxLength: 30
+ *     responses:
+ *       200:
+ *         description: OTP enviado por e-mail
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 pendingId:
+ *                   type: string
+ *                   format: uuid
+ *       401:
+ *         description: Usuário sem permissão
+ *       500:
+ *         description: Erro interno
+ */
 auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
     
     try{
@@ -83,6 +119,32 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/auth/approve/{id}:
+ *   get:
+ *     summary: Aprova o login via link enviado no e-mail
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Usuário aprovado
+ *       401:
+ *         description: Token inválido ou sessão inexistente
+ *       410:
+ *         description: Código expirado
+ */
 auth.get('/approve/:id', rateLimiter, async (req: Request, res: Response) => {
     try{
     const id = req.params['id'] as string;
@@ -148,6 +210,37 @@ auth.get('/approve/:id', rateLimiter, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/auth/verify:
+ *   post:
+ *     summary: Verifica o OTP e cria a sessão
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [pendingId, otp]
+ *             properties:
+ *               pendingId:
+ *                 type: string
+ *                 format: uuid
+ *               otp:
+ *                 type: string
+ *                 minLength: 6
+ *                 maxLength: 6
+ *     responses:
+ *       200:
+ *         description: Login realizado com sucesso
+ *       401:
+ *         description: Código inválido
+ *       403:
+ *         description: Verificação ainda não aprovada
+ *       410:
+ *         description: Código expirado
+ */
 auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
     const result = verifySchema.safeParse(req.body);
 
@@ -220,6 +313,18 @@ auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
 });
 
 
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Encerra a sessão atual
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Logout realizado
+ *       500:
+ *         description: Erro ao encerrar sessão
+ */
 auth.post('/logout', async (req: Request, res: Response) => {
     try{
 
@@ -241,6 +346,50 @@ auth.post('/logout', async (req: Request, res: Response) => {
 
     
 });
+
+
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Retorna o usuário da sessão atual
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Dados do usuário
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     username:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *       401:
+ *         description: Não autenticado
+ */
+/**
+ * @swagger
+ * /api/auth/honeypot:
+ *   post:
+ *     summary: Registra e bane o IP que tentou acessar o painel admin falso
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: IP banido
+ */
+auth.post('/honeypot', async (req: Request, res: Response) => {
+    const ip = req.ip
+    if (ip) {
+        banIp(ip, 'honeypot-admin').catch(err => logger.error(err, 'Erro ao banir IP via honeypot.'))
+        logger.warn({ ip }, 'Honeypot /admin triggered — IP banido.')
+    }
+    return res.status(200).json({ message: 'ok' })
+})
 
 
 auth.get('/me', requireAuth, async (req: Request, res: Response) => {

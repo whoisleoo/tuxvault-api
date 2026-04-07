@@ -1,7 +1,7 @@
-import { Express } from 'express';
+import { RequestHandler } from 'express';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
-import  { version} from '../../package.json';
+import { version } from '../../package.json';
 import { env } from './env.js';
 
 
@@ -16,33 +16,31 @@ const options: swaggerJsdoc.Options = {
       },
       components: {
         securitySchemes: {
-          bearerAuth: {
-            type: 'http',
-            scheme: 'bearer',
-            bearerFormat: 'JWT',
+          cookieAuth: {
+            type: 'apiKey',
+            in: 'cookie',
+            name: 'connect.sid',
           },
         },
       },
-
-
       servers: [
         { url: env.APP_URL, description: env.DEV_MODE ? 'Ambiente de desenvolvimento' : 'Ambiente em produção' }
       ],
     },
-    apis: ['./src/routes/*.ts', './src/models/*.ts'], 
+    apis: ['./src/routes/*.ts'],
   };
-  
-  const swaggerSpec = swaggerJsdoc(options);
-  
-  export function setupSwagger(app: Express) {
-    
-    app.get('/api-docs.json', (req, res) => {
-      res.setHeader('Content-Type', 'application/json');
-      res.send(swaggerSpec);
-    });
-  
-    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-      swaggerOptions: { persistAuthorization: true },
-      customSiteTitle: "Tux Vault API Explorer"
-    }));
-  }
+
+const swaggerSpec = swaggerJsdoc(options);
+
+export const swaggerJsonHandler: RequestHandler = (req, res) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(swaggerSpec)
+}
+
+export const swaggerUiHandlers: RequestHandler[] = [
+    ...swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, {
+        swaggerOptions: { persistAuthorization: true },
+        customSiteTitle: 'Tux Vault API Explorer',
+    }) as RequestHandler,
+]

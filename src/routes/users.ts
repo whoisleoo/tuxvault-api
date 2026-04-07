@@ -12,6 +12,20 @@ import { logger } from '../config/logger.js';
 const user: Router = Router();
 
 
+/**
+ * @swagger
+ * /api/users:
+ *   get:
+ *     summary: Lista todos os usuários Samba
+ *     tags: [Users]
+ *     responses:
+ *       200:
+ *         description: Lista de usuários
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão de admin
+ */
 user.get('/', requireAdmin, async (req: Request, res: Response) => {
     try{        
         const sambaUsers = await sambaUser();
@@ -32,6 +46,24 @@ user.get('/', requireAdmin, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/users/{username}:
+ *   get:
+ *     summary: Retorna dados de um usuário pelo username
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: username
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Dados do usuário
+ *       404:
+ *         description: Usuário não encontrado
+ */
 user.get('/:username', requireAdmin, async (req: Request, res: Response) => {
     try{        
         const username = req.params['username'] as string;
@@ -59,6 +91,24 @@ user.get('/:username', requireAdmin, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/users/{username}/role:
+ *   patch:
+ *     summary: Alterna o cargo do usuário entre user e admin
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: username
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Cargo alterado
+ *       404:
+ *         description: Usuário não encontrado
+ */
 user.patch('/:username/role', requireAdmin, async (req: Request, res: Response) => {
     try{        
         const username = req.params['username'] as string;
@@ -95,6 +145,24 @@ user.patch('/:username/role', requireAdmin, async (req: Request, res: Response) 
 
 
 
+/**
+ * @swagger
+ * /api/users/{username}:
+ *   delete:
+ *     summary: Remove um usuário do sistema
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: username
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Usuário removido
+ *       404:
+ *         description: Usuário não encontrado
+ */
 user.delete('/:username', requireAdmin, async (req: Request, res: Response) => {
     try{        
         const username = req.params['username'] as string;

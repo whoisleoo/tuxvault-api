@@ -21,7 +21,7 @@ import { NextFunction, Request, Response } from 'express';
 import { logger } from './src/config/logger.js';
 import { ipFilter, banIp, loadBannedIps, cleanExpiredBans } from './src/middlewares/blacklistIp.js';
 import { requireAdmin } from './src/middlewares/requireAdmin.js';
-import { setupSwagger } from './src/config/swagger.js';
+import { swaggerJsonHandler, swaggerUiHandlers } from './src/config/swagger.js';
 
 /*
 *    TUX VAULT (PT-BR)
@@ -90,16 +90,23 @@ async function honeyPot(req: Request, res: Response) {
     }
 }
 
-app.all('/.env',             honeyPot)
-app.all('/.git/config',      honeyPot)
-app.all('/wp-login.php',     honeyPot)
-app.all('/wp-admin',         honeyPot)
-app.all('/xmlrpc.php',       honeyPot)
-app.all('/phpmyadmin',       honeyPot)
-app.all('/admin/config',     honeyPot)
-app.all('/actuator/env',     honeyPot)
-app.all('/actuator/health',  honeyPot)
-app.all('/.DS_Store',        honeyPot)
+app.all('/.env',                  honeyPot)
+app.all('/.env.:ext',             honeyPot)
+app.all('/.git/config',           honeyPot)
+app.all('/.git/*path',            honeyPot)
+app.all('/wp-login.php',          honeyPot)
+app.all('/wp-admin',              honeyPot)
+app.all('/wp-admin/*path',        honeyPot)
+app.all('/xmlrpc.php',            honeyPot)
+app.all('/phpmyadmin',            honeyPot)
+app.all('/phpmyadmin/*path',      honeyPot)
+app.all('/admin/config',          honeyPot)
+app.all('/actuator/env',          honeyPot)
+app.all('/actuator/health',       honeyPot)
+app.all('/actuator/*path',        honeyPot)
+app.all('/.DS_Store',             honeyPot)
+app.all('/config.json',           honeyPot)
+app.all('/server-status',         honeyPot)
 
 app.get('/', (req, res) => {
     res.json('Tuxvault API is online, if you are not an administrator, you must leave this page.');
@@ -110,10 +117,13 @@ app.use('/api/auth', authRouter)
 app.use('/api/files', fileRouter)
 app.use('/api/users', userRouter);
 app.use('/api/audit', auditRouter);
-app.use('/api-docs', requireAdmin, (req, res, next) => {
-    setupSwagger(app);
-    next();
-});
+if (env.NODE_ENV === 'production') {
+    app.get('/api-docs.json', requireAdmin, swaggerJsonHandler)
+    app.use('/api-docs',      requireAdmin, ...swaggerUiHandlers)
+} else {
+    app.get('/api-docs.json', swaggerJsonHandler)
+    app.use('/api-docs',      ...swaggerUiHandlers)
+}
 
 /*
 *    Error Handler global, funciona como um middleware
@@ -135,8 +145,13 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 })
 
 
-loadBannedIps().catch(err => logger.error(err, 'Erro ao carregar blacklist.'))
+async function start() {
+    await loadBannedIps().catch(err => logger.error(err, 'Erro ao carregar blacklist.'))
+    const server = app.listen(PORT, () => {
+        console.log(`Tuxvault API is running at http://localhost:${PORT}`)
+    })
+    server.requestTimeout  = 30 * 60 * 1000  
+    server.headersTimeout  = 31 * 60 * 1000 
+}
 
-app.listen(PORT, () => {
-    console.log(`Tuxvault API is running at http://localhost:${PORT}`);
-});
+start()

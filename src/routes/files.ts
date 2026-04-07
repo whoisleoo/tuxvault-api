@@ -17,6 +17,19 @@ import { findOwned, validateParent, checkQuota, pipeFile, setDownloadHeaders, fi
 import { audit } from '../services/auditHelper.js';
 import { handleError } from '../utils/errorHandler.js';
 
+/**
+ * @swagger
+ * tags:
+ *   - name: Files
+ *     description: Gerenciamento de arquivos e pastas
+ *   - name: Auth
+ *     description: Autenticação e sessão
+ *   - name: Users
+ *     description: Gerenciamento de usuários (admin)
+ *   - name: Audit
+ *     description: Logs de auditoria (admin)
+ */
+
 
 
 
@@ -46,6 +59,25 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const file: Router = Router();
 
 
+/**
+ * @swagger
+ * /api/files:
+ *   get:
+ *     summary: Lista arquivos e pastas do diretório atual
+ *     tags: [Files]
+ *     parameters:
+ *       - in: query
+ *         name: parentId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID da pasta pai. Omitir para raiz.
+ *     responses:
+ *       200:
+ *         description: Lista de arquivos
+ *       401:
+ *         description: Não autenticado
+ */
 file.get('/', requireAuth, async (req: Request, res: Response) => {
     try{    
         const parentId = req.query.parentId as string | undefined;
@@ -71,9 +103,41 @@ file.get('/', requireAuth, async (req: Request, res: Response) => {
 
 
 
-file.post('/upload', requireAuth, upload.array('file', 20), async (req: Request, res: Response) => {
-    try{    
-        const uploadedFiles = req.files as Express.Multer.File[];
+/**
+ * @swagger
+ * /api/files/upload:
+ *   post:
+ *     summary: Faz upload de um ou mais arquivos
+ *     tags: [Files]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *               parentId:
+ *                 type: string
+ *                 format: uuid
+ *     responses:
+ *       201:
+ *         description: Arquivos enviados
+ *       409:
+ *         description: Todos os arquivos já existem no destino
+ *       413:
+ *         description: Arquivo muito grande
+ *       507:
+ *         description: Armazenamento insuficiente
+ */
+file.post('/upload', requireAuth, upload.fields([{ name: 'file', maxCount: 20 }]), async (req: Request, res: Response) => {
+    try{
+        const uploadedFiles = (req.files as Record<string, Express.Multer.File[]>)?.['file'] ?? [];
 
         if(!uploadedFiles || uploadedFiles.length === 0){
             return res.status(400).json({
@@ -151,6 +215,32 @@ file.post('/upload', requireAuth, upload.array('file', 20), async (req: Request,
 
 
 
+/**
+ * @swagger
+ * /api/files/folder:
+ *   post:
+ *     summary: Cria uma nova pasta
+ *     tags: [Files]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 maxLength: 255
+ *               parentId:
+ *                 type: string
+ *                 format: uuid
+ *     responses:
+ *       201:
+ *         description: Pasta criada
+ *       409:
+ *         description: Já existe pasta com esse nome
+ */
 file.post('/folder', requireAuth, async (req: Request, res: Response) => {
     try{    
         const BASE_PATH = env.VAULT_PATH
@@ -231,6 +321,32 @@ file.post('/folder', requireAuth, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/files/download/{id}:
+ *   get:
+ *     summary: Faz download de um arquivo
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Conteúdo do arquivo
+ *         content:
+ *           application/octet-stream:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Item é uma pasta
+ *       404:
+ *         description: Arquivo não encontrado
+ */
 file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
     try{
      const id = req.params['id'] as string;
@@ -263,6 +379,30 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/files/download-zip/{id}:
+ *   get:
+ *     summary: Faz download de uma pasta como ZIP
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Arquivo ZIP da pasta
+ *         content:
+ *           application/zip:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Item não é uma pasta
+ */
 file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) => {
     try{
      const id = req.params['id'] as string;
@@ -341,6 +481,34 @@ file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) =
 
 
 
+/**
+ * @swagger
+ * /api/files/preview/{id}:
+ *   get:
+ *     summary: Visualiza um arquivo em streaming (suporte a Range)
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: header
+ *         name: Range
+ *         schema:
+ *           type: string
+ *         description: "Ex: bytes=0-1024"
+ *     responses:
+ *       200:
+ *         description: Conteúdo completo
+ *       206:
+ *         description: Conteúdo parcial (Range request)
+ *       400:
+ *         description: Item é uma pasta
+ *       416:
+ *         description: Range inválido
+ */
 file.get('/preview/:id', requireAuth, async (req: Request, res: Response) => {
     try {
         const id = req.params['id'] as string;
@@ -397,6 +565,27 @@ file.get('/preview/:id', requireAuth, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/files/trash/{id}:
+ *   delete:
+ *     summary: Move um item para a lixeira
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Item movido para lixeira
+ *       400:
+ *         description: Item já está na lixeira
+ *       404:
+ *         description: Item não encontrado
+ */
 file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string;
@@ -429,6 +618,36 @@ file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/files/rename/{id}:
+ *   patch:
+ *     summary: Renomeia um arquivo ou pasta
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 maxLength: 255
+ *     responses:
+ *       200:
+ *         description: Item renomeado
+ *       409:
+ *         description: Nome já existe no mesmo diretório
+ */
 file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string;
@@ -469,6 +688,16 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/files/favorites:
+ *   get:
+ *     summary: Lista os itens favoritados do usuário
+ *     tags: [Files]
+ *     responses:
+ *       200:
+ *         description: Lista de favoritos
+ */
 file.get('/favorites', requireAuth, async (req: Request, res: Response) => {
     try {
         const result = await db.select().from(files).where(
@@ -481,6 +710,16 @@ file.get('/favorites', requireAuth, async (req: Request, res: Response) => {
 });
 
 
+/**
+ * @swagger
+ * /api/files/trash:
+ *   get:
+ *     summary: Lista os itens na lixeira
+ *     tags: [Files]
+ *     responses:
+ *       200:
+ *         description: Lista de itens na lixeira
+ */
 file.get('/trash', requireAuth, async (req: Request, res: Response) => {
     try{    
         const result = await db.select().from(files).where(and(eq(files.inTrash, true), eq(files.ownerUsername, req.session.username!)));
@@ -497,6 +736,25 @@ file.get('/trash', requireAuth, async (req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/files/trash/{id}/permanent:
+ *   delete:
+ *     summary: Exclui permanentemente um item da lixeira
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Item excluído permanentemente
+ *       400:
+ *         description: Item não está na lixeira
+ */
 file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string;
@@ -534,6 +792,25 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
 
 
 
+/**
+ * @swagger
+ * /api/files/trash/{id}/restore:
+ *   patch:
+ *     summary: Restaura um item da lixeira
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Item restaurado
+ *       400:
+ *         description: Item não está na lixeira
+ */
 file.patch('/trash/:id/restore', requireAuth, async (req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string;
@@ -569,6 +846,33 @@ const favoriteSchema = z.object({
     favorited: z.boolean()
 })
 
+/**
+ * @swagger
+ * /api/files/{id}/favorite:
+ *   patch:
+ *     summary: Favorita ou desfavorita um item
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [favorited]
+ *             properties:
+ *               favorited:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Estado de favorito atualizado
+ */
 file.patch('/:id/favorite', requireAuth, async (req: Request, res: Response) => {
     try {
         const id = req.params['id'] as string;
@@ -586,6 +890,61 @@ file.patch('/:id/favorite', requireAuth, async (req: Request, res: Response) => 
 
 
 
+file.get('/storage/breakdown', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const result = await db.execute(sql`
+            SELECT
+                COALESCE(SUM(CASE WHEN mime_type LIKE 'image/%' THEN size ELSE 0 END), 0)::bigint AS images,
+                COALESCE(SUM(CASE WHEN mime_type LIKE 'video/%' THEN size ELSE 0 END), 0)::bigint AS videos,
+                COALESCE(SUM(CASE WHEN mime_type LIKE 'audio/%' THEN size ELSE 0 END), 0)::bigint AS audio,
+                COALESCE(SUM(CASE WHEN LOWER(extension) = ANY(ARRAY['zip','tar','gz','rar','7z','bz2','xz','tgz']) THEN size ELSE 0 END), 0)::bigint AS archives,
+                COALESCE(SUM(CASE WHEN LOWER(extension) = ANY(ARRAY['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','md','rtf','odt','csv']) THEN size ELSE 0 END), 0)::bigint AS documents,
+                COALESCE(SUM(CASE WHEN LOWER(extension) = ANY(ARRAY['js','ts','jsx','tsx','py','java','c','cpp','go','rs','php','rb','swift','kt','html','css','scss','json','yaml','yml','xml','sh','bash','sql','vue','svelte','lua','r']) THEN size ELSE 0 END), 0)::bigint AS code,
+                COALESCE(SUM(size), 0)::bigint AS total
+            FROM files
+            WHERE owner_username = ${req.session.username!}
+            AND in_trash = false
+            AND is_directory = false
+        `)
+        const row = result.rows[0] as Record<string, string>
+        const images = Number(row.images)
+        const videos = Number(row.videos)
+        const audio = Number(row.audio)
+        const archives = Number(row.archives)
+        const documents = Number(row.documents)
+        const code = Number(row.code)
+        const total = Number(row.total)
+        const other = Math.max(0, total - images - videos - audio - archives - documents - code)
+        return res.status(200).json({ breakdown: { images, videos, audio, archives, documents, code, other } })
+    } catch (err) {
+        return handleError(res, err, 'Erro ao buscar breakdown de armazenamento.')
+    }
+})
+
+/**
+ * @swagger
+ * /api/files/storage:
+ *   get:
+ *     summary: Retorna informações de armazenamento do usuário
+ *     tags: [Files]
+ *     responses:
+ *       200:
+ *         description: Dados de armazenamento
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 storage:
+ *                   type: object
+ *                   properties:
+ *                     used:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     free:
+ *                       type: integer
+ */
 file.get('/storage', requireAuth, async (req: Request, res: Response) => {
     try {
         const storage = await getStorageInfo(req.session.username!);
@@ -604,9 +963,40 @@ file.get('/storage', requireAuth, async (req: Request, res: Response) => {
 
 
 
-file.post('/upload-folder', requireAuth, upload.array('file', 500), async (req: Request, res: Response) => {
+/**
+ * @swagger
+ * /api/files/upload-folder:
+ *   post:
+ *     summary: Faz upload de uma pasta com estrutura de diretórios
+ *     tags: [Files]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file, paths]
+ *             properties:
+ *               file:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *               paths:
+ *                 type: string
+ *                 description: JSON array com os caminhos relativos de cada arquivo
+ *               parentId:
+ *                 type: string
+ *                 format: uuid
+ *     responses:
+ *       201:
+ *         description: Pasta enviada com sucesso
+ *       507:
+ *         description: Armazenamento insuficiente
+ */
+file.post('/upload-folder', requireAuth, upload.fields([{ name: 'file', maxCount: 10000 }]), async (req: Request, res: Response) => {
     try {
-        const uploadedFiles = req.files as Express.Multer.File[];
+        const uploadedFiles = (req.files as Record<string, Express.Multer.File[]>)?.['file'] ?? [];
 
         if (!uploadedFiles || uploadedFiles.length === 0) {
             return res.status(400).json({ error: "Nenhum arquivo fornecido." });
@@ -657,6 +1047,30 @@ file.post('/upload-folder', requireAuth, upload.array('file', 500), async (req: 
 
 
 
+/**
+ * @swagger
+ * /api/files/folders/{id}/size:
+ *   get:
+ *     summary: Retorna o tamanho total de uma pasta
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Tamanho da pasta em bytes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 size:
+ *                   type: integer
+ */
 file.get('/folders/:id/size', requireAuth, async (req: Request, res: Response) => {
     const id = req.params['id'] as string;
     const username = req.session.username!
@@ -684,6 +1098,27 @@ file.get('/folders/:id/size', requireAuth, async (req: Request, res: Response) =
 
 
 
+/**
+ * @swagger
+ * /api/files/{id}/copy:
+ *   post:
+ *     summary: Cria uma cópia de um arquivo ou pasta
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       201:
+ *         description: Cópia criada
+ *       400:
+ *         description: Item está na lixeira
+ *       507:
+ *         description: Armazenamento insuficiente
+ */
 file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string
@@ -749,6 +1184,40 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
 
 
 
+/**
+ * @swagger
+ * /api/files/{id}/move:
+ *   patch:
+ *     summary: Move um item para outra pasta
+ *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [targetId]
+ *             properties:
+ *               targetId:
+ *                 type: string
+ *                 format: uuid
+ *                 nullable: true
+ *                 description: ID da pasta destino. null para mover para raiz.
+ *     responses:
+ *       200:
+ *         description: Item movido
+ *       400:
+ *         description: Operação inválida (mover para si mesmo, subdiretório, etc.)
+ *       409:
+ *         description: Já existe item com esse nome no destino
+ */
 file.patch('/:id/move', requireAuth, async (req: Request, res: Response) => {
     try{
 
@@ -768,6 +1237,8 @@ file.patch('/:id/move', requireAuth, async (req: Request, res: Response) => {
         }
 
 
+
+
         if (record.id === targetId){
             return res.status(400).json({ error: "Não é possível mover uma pasta para dentro de si mesma." })
         } 
@@ -778,11 +1249,9 @@ file.patch('/:id/move', requireAuth, async (req: Request, res: Response) => {
         if (targetId) {
             const target = await validateParent(targetId, req.session.username!)
 
-
-            if (record.isDirectory && target.path.startsWith(record.path + '/')) {
+            if(record.isDirectory && target.path.startsWith(record.path + '/')) {
                 return res.status(400).json({ error: "Não é possível mover uma pasta para dentro de um de seus subdiretórios." })
             }
-
             destPath = target.path
         }
 

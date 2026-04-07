@@ -144,7 +144,14 @@ export async function uploadFolderService(
             }
         });
 
-        return await tx.insert(files).values(fileValues).returning();
+        const CHUNK_SIZE = 500
+        const results = []
+        for (let i = 0; i < fileValues.length; i += CHUNK_SIZE) {
+            const chunk = fileValues.slice(i, i + CHUNK_SIZE)
+            const inserted = await tx.insert(files).values(chunk).returning()
+            results.push(...inserted)
+        }
+        return results
     });
 }
 
