@@ -1,10 +1,11 @@
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
-import { auditLog } from '../db/schema.js';
+import { auditLog, users } from '../db/schema.js';
 import { db } from '../db/index.js'
-import { requireAuth } from '../middlewares/requireAuth.js';
 import { requireAdmin } from '../middlewares/requireAdmin.js';
 import { logger } from '../config/logger.js';
+import { eq, desc, count, and, ilike } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 
 
 
@@ -40,15 +41,37 @@ const audit: Router = Router();
  */
 audit.get('/', requireAdmin, async (req: Request, res: Response) => {
     try{       
-        const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-        const offset = parseInt(req.query.offset as string) || 0; 
+        const limit = Math.min(parseInt(req.query.limit  as string) || 25, 100);
+        const offset = parseInt(req.query.offset as string) || 0;
+        const username = (req.query.username as string)?.trim() || undefined;
+        const action = (req.query.action   as string)?.trim() || undefined;
+
+        const conditions: SQL[] = [];
+        if (username) conditions.push(ilike(users.username, `%${username}%`));
+        if (action) conditions.push(eq(auditLog.action, action));
+        const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+        /*
+        *
+        *     Tenho que investigar o porque ele tá marcando como erro.
+        *     Verificar existencia não funcionou, nem marcar o tipo.
+        * 
+        *     TODO: Adicionar cronometro pra deletar registro de auditoria pra
+        *      não estrapolar o banco.
+        */
+        const [{ total }] = await db.select({ total: count() }).from(auditLog)
+            .leftJoin(users, eq(auditLog.userId, users.id)).where(where);
 
 
-        const result = await db.select().from(auditLog).limit(limit).offset(offset).orderBy(auditLog.createdAt);
 
-        return res.status(200).json({
-            result
-        })
+
+
+        const result = await db.select({ id: auditLog.id, action: auditLog.action, fileName: auditLog.fileName, filePath: auditLog.filePath, extra: auditLog.extra, createdAt: auditLog.createdAt, username: users.username }).from(auditLog).leftJoin(users, eq(auditLog.userId, users.id)).where(where).orderBy(desc(auditLog.createdAt)).limit(limit).offset(offset);
+
+
+        return res.status(200).json({ 
+            result, total
+         })
 
 } catch(err) {
     if (err instanceof z.ZodError) {
@@ -58,11 +81,7 @@ audit.get('/', requireAdmin, async (req: Request, res: Response) => {
     res.status(500).json({ error: "Erro interno do servidor." });
 }
 
-});
-
-
-
-
+})
 
 
 export default audit

@@ -671,7 +671,7 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
 
         const [rename] = await db.update(files).set({ name: name, updatedAt: new Date() }).where(eq(files.id, id)).returning();
 
-        await audit(req, 'rename', rename!)
+        await audit(req, 'rename', rename!, { oldName: record.name })
 
 
         return res.status(200).json({
