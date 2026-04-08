@@ -44,7 +44,7 @@ const uploadBodySchema = z.object({
 
 
 const renameSchema = z.object({
-    name: z.string().min(1).max(255).refine((val) => !/(\/|\\|\.\.)/.test(val),{ message: "Nome inválido." }),
+    name: z.string().min(1).max(255, {message: "Número máximo de caracteres excedido."}).refine((val) => !/(\/|\\|\.\.)/.test(val),{message: "Nome inválido."}),
 })
 
 const moveSchema = z.object({
