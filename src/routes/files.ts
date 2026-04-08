@@ -48,7 +48,7 @@ const renameSchema = z.object({
 })
 
 const copyBodySchema = z.object({
-    parentId: z.string().uuid().optional()
+    parentId: z.string().uuid().nullable().optional()
 })
 
 const moveSchema = z.object({
@@ -1142,10 +1142,14 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
         let destPath = path.dirname(record.path);
         
         if(destinationId !== undefined){
-            let destination = await validateParent(destinationId, req.session.username!);
-
-            targetParentId = destination.id 
-            destPath = destination.path
+            if(destinationId === null){ //ve se ta na raiz 
+                targetParentId = null;
+                destPath = env.VAULT_PATH;
+            } else {
+                let destination = await validateParent(destinationId, req.session.username!);
+                targetParentId = destination.id;
+                destPath = destination.path;
+            }
         }
         
         
