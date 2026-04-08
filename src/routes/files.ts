@@ -47,6 +47,10 @@ const renameSchema = z.object({
     name: z.string().min(1).max(255, {message: "Número máximo de caracteres excedido."}).refine((val) => !/(\/|\\|\.\.)/.test(val),{message: "Nome inválido."}),
 })
 
+const copyBodySchema = z.object({
+    parentId: z.string().uuid().optional()
+})
+
 const moveSchema = z.object({
     targetId: z.union([z.string().uuid(), z.null()])
 })
@@ -1122,6 +1126,8 @@ file.get('/folders/:id/size', requireAuth, async (req: Request, res: Response) =
 file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string
+        const { parentId: destinationId } = copyBodySchema.parse(req.body)
+        
         const record = await findOwned(id, req.session.username!);
 
         if(record.inTrash){
@@ -1130,25 +1136,39 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
             })
         }
 
-        const siblings = await findDuplicate('', record.parentId).then(() => record.parentId ? db.select({ name: files.name }).from(files).where(and(eq(files.parentId, record.parentId), eq(files.inTrash, false)))
-    : db.select({ name: files.name }).from(files).where(and(isNull(files.parentId), eq(files.inTrash, false), eq(files.ownerUsername, req.session.username!)))
-    )
+
+        let targetParentId = record.parentId;
+
+        let destPath = path.dirname(record.path);
+        
+        if(destinationId !== undefined){
+            let destination = await validateParent(destinationId, req.session.username!);
+
+            targetParentId = destination.id 
+            destPath = destination.path
+        }
+        
+        
+
+
+        const siblings = targetParentId ? await db.select({ name: files.name }).from(files).where(and(eq(files.parentId, targetParentId), eq(files.inTrash, false)))
+        : await db.select({ name: files.name }).from(files).where(and(isNull(files.parentId), eq(files.inTrash, false), eq(files.ownerUsername, req.session.username!)))
 
 
     const copyName = generateCopyName(record.name, siblings)
-    const parentPath = path.dirname(record.path);
-
 
     if(!record.isDirectory){
         await checkQuota(req.session.username!, record.size ?? 0)
 
-        const newPath = path.join(parentPath, copyName);
+
+        
+        const newPath = path.join(destPath, copyName);
 
         await fsp.copyFile(record.path, newPath);
         const [newFile ] = await await db.insert(files).values({
             name: copyName,
             path: newPath,
-            parentId: record.parentId,
+            parentId: targetParentId,
             isDirectory: false,
             size: record.size, 
             mimeType: record.mimeType,
@@ -1162,7 +1182,7 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
         })
     }
 
-    const newFolder = await copyFolderService(id, req.session.username!, copyName, record.parentId, parentPath);
+    const newFolder = await copyFolderService(id, req.session.username!, copyName, targetParentId, destPath);
     await audit(req, 'copy', record);
 
     return res.status(201).json({
