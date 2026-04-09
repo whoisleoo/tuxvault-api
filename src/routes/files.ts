@@ -172,9 +172,10 @@ file.post('/upload', requireAuth, upload.fields([{ name: 'file', maxCount: 20 }]
 
 
         const results = [];
+        const skippedPaths: string[] = [];
         for(const f of uploadedFiles) {
             const originalname = Buffer.from(f.originalname, 'latin1').toString('utf-8');
-            if(existingNames.has(originalname)) continue
+            if(existingNames.has(originalname)) { skippedPaths.push(f.path); continue }
 
             const extensionName = originalname.split('.').pop() ?? null;
             const [newFile] = await db.insert(files).values({
@@ -193,6 +194,8 @@ file.post('/upload', requireAuth, upload.fields([{ name: 'file', maxCount: 20 }]
                 await audit(req, 'upload', newFile)
             }
         }
+
+        if (skippedPaths.length) await Promise.allSettled(skippedPaths.map(p => fsp.unlink(p)))
 
         if(!results.length){
             return res.status(409).json({
@@ -770,15 +773,15 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
             })
         }
 
-        await audit(req, 'deleted', record)
-
         if (record.isDirectory) {
-            await fsp.rm(record.path, { recursive: true, force: true });
+            await fsp.rm(record.path, { recursive: true, force: true }).catch(() => {});
         } else {
-            await fsp.unlink(record.path);
+            await fsp.unlink(record.path).catch(() => {});
         }
 
         await db.delete(files).where(eq(files.id, id));
+
+        await audit(req, 'deleted', { name: record.name, path: record.path });
 
 
         return res.status(200).json({
@@ -1027,7 +1030,12 @@ file.post('/upload-folder', requireAuth, upload.fields([{ name: 'file', maxCount
         }
 
         const incomingSize = uploadedFiles.reduce((acc, f) => acc + f.size, 0);
-        await checkQuota(req.session.username!, incomingSize)
+        try {
+            await checkQuota(req.session.username!, incomingSize)
+        } catch (quotaErr) {
+            await Promise.allSettled(uploadedFiles.map(f => fsp.unlink(f.path)))
+            throw quotaErr
+        }
 
         for (const p of relativePaths) {
             if (/(\.\.[\\/])|(^[\\/])/.test(p)) {
@@ -1155,8 +1163,8 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
         
 
 
-        const siblings = targetParentId ? await db.select({ name: files.name }).from(files).where(and(eq(files.parentId, targetParentId), eq(files.inTrash, false)))
-        : await db.select({ name: files.name }).from(files).where(and(isNull(files.parentId), eq(files.inTrash, false), eq(files.ownerUsername, req.session.username!)))
+        const siblings = targetParentId ? await db.select({ name: files.name }).from(files).where(eq(files.parentId, targetParentId))
+        : await db.select({ name: files.name }).from(files).where(and(isNull(files.parentId), eq(files.ownerUsername, req.session.username!)))
 
 
     const copyName = generateCopyName(record.name, siblings)
@@ -1285,9 +1293,16 @@ file.patch('/:id/move', requireAuth, async (req: Request, res: Response) => {
         }
 
 
-        const oldPath = record.path
-        const newPath = path.join(destPath, record.name)
+        const oldPath = path.normalize(record.path)
+        const newPath = path.normalize(path.join(destPath, record.name))
 
+        try {
+            await fsp.access(oldPath)
+        } catch {
+            return res.status(409).json({ error: 'Arquivo não encontrado no disco. O caminho armazenado pode estar desatualizado.' })
+        }
+
+        await fsp.mkdir(path.dirname(newPath), { recursive: true })
         await fsp.rename(oldPath, newPath)
 
         await db.transaction(async (tx) => {

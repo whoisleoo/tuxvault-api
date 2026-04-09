@@ -189,6 +189,9 @@ export async function copyFolderService(sourceId: string, username: string, copy
     type Node = { id: string; name: string; disk_path: string; is_directory: boolean; parent_id: string | null; size: number | null; mime_type: string | null; extension: string | null }
     const nodes = treeResult.rows as Node[]
 
+    // console.log('[copyFolderService] first row keys:', Object.keys(treeResult.rows[0] ?? {}))
+    // console.log('[copyFolderService] first row:', JSON.stringify(treeResult.rows[0]))
+
     return await db.transaction(async (tx) => {
         const idMap = new Map<string, { id: string; path: string }>()
 
