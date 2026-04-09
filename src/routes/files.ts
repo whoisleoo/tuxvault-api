@@ -2,7 +2,7 @@ import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { files } from '../db/schema.js';
 import { db } from '../db/index.js'
-import { eq, isNull, and, inArray, sql } from 'drizzle-orm'
+import { eq, isNull, and, inArray, sql, ilike } from 'drizzle-orm'
 import { upload } from '../config/multer.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import * as path from 'path';
@@ -103,6 +103,24 @@ file.get('/', requireAuth, async (req: Request, res: Response) => {
 
 });
 
+file.get('/search', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const q = (req.query.q as string ?? '').trim()
+        if (!q) return res.status(200).json([])
+
+        const result = await db.select().from(files).where(
+            and(
+                eq(files.ownerUsername, req.session.username!),
+                eq(files.inTrash, false),
+                ilike(files.name, `%${q}%`)
+            )
+        ).orderBy(files.isDirectory, files.name)
+
+        return res.status(200).json(result)
+    } catch(err) {
+        return handleError(res, err, 'Erro ao pesquisar arquivos.')
+    }
+})
 
 
 

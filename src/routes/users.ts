@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { users } from '../db/schema.js';
-import { db } from '../db/index.js'
+import { db, pool } from '../db/index.js'
 import { eq } from 'drizzle-orm'
 import { sambaUser } from '../services/sambaUser.js';
 import { requireAdmin } from '../middlewares/requireAdmin.js';
@@ -193,5 +193,46 @@ user.delete('/:username', requireAdmin, async (req: Request, res: Response) => {
 
 }); 
 
+
+/**
+ * @swagger
+ * /api/users/{username}/sessions:
+ *   delete:
+ *     summary: Força logout de todas as sessões ativas de um usuário
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: username
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Sessões encerradas
+ *       404:
+ *         description: Usuário não encontrado
+ */
+user.delete('/:username/sessions', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const username = req.params['username'] as string;
+
+        if (username === req.session.username) {
+            return res.status(400).json({ error: 'Não é possível encerrar sua própria sessão por aqui.' })
+        }
+
+        const result = await db.select().from(users).where(eq(users.username, username));
+        if (!result[0]) {
+            return res.status(404).json({ error: 'Usuário não encontrado.' })
+        }
+
+        await pool.query(`DELETE FROM session WHERE sess::jsonb->>'username' = $1`, [username])
+
+        return res.status(200).json({ message: `Sessões de ${username} encerradas.` })
+
+    } catch (err) {
+        logger.error(err, 'Erro ao encerrar sessões do usuário.');
+        res.status(500).json({ error: 'Erro interno do servidor.' })
+    }
+});
 
 export default user

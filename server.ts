@@ -14,14 +14,16 @@ import { env } from './src/config/env.js';
 import userRouter from './src/routes/users.js';
 import auditRouter from './src/routes/audit.js';
 import helmet from 'helmet';
-import { pendingTwoFa } from './src/db/schema.js';
-import { lt } from 'drizzle-orm';
+import { pendingTwoFa, auditLog } from './src/db/schema.js';
+import { lt, eq, sql } from 'drizzle-orm';
 import { db } from './src/db/index.js';
 import { NextFunction, Request, Response } from 'express';
 import { logger } from './src/config/logger.js';
 import { ipFilter, banIp, loadBannedIps, cleanExpiredBans } from './src/middlewares/blacklistIp.js';
 import { requireAdmin } from './src/middlewares/requireAdmin.js';
 import { swaggerJsonHandler, swaggerUiHandlers } from './src/config/swagger.js';
+import cron from 'node-cron'
+
 
 /*
 *    TUX VAULT (PT-BR)
@@ -66,6 +68,16 @@ app.use(session({
     }
 }))
 
+
+cron.schedule('0 0 * * *', async () => {
+    try {
+      await db.delete(auditLog).where(lt(auditLog.createdAt, sql`NOW() - INTERVAL '90 days'`))
+  
+      logger.info('Limpeza do registro de auditoria executada com sucesso.')
+    } catch (err) {
+      logger.error(err, 'Erro ao limpar registro de auditoria antigos.')
+    }
+  })
 
 
 
