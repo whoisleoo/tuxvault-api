@@ -103,7 +103,7 @@ setInterval(async () => {
 
 async function honeyPot(req: Request, res: Response) {
     res.status(404).end()
-    const ip = req.ip
+    const ip = req.socket.remoteAddress ?? req.ip
     if (ip) {
         banIp(ip).catch(err => logger.error(err, 'Erro ao persistir ban no banco.'))
         logger.warn({ ip, path: req.path, method: req.method }, 'Honeypot triggered — IP bloqueado.')

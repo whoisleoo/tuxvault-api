@@ -187,7 +187,7 @@ auth.get('/approve/:id', approveLimiter, async (req: Request, res: Response) => 
     }
 
 
-    const [approved] = await db.update(pendingTwoFa).set({ approved: true }).where(eq(pendingTwoFa.id, id)).returning();
+    const [approved] = await db.update(pendingTwoFa).set({ approved: true, approveTokenHash: '' }).where(eq(pendingTwoFa.id, id)).returning();
 
     if(!approved){
         return res.redirect(`${env.APP_URL}/approve?status=error`)

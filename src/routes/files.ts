@@ -686,6 +686,8 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
             })
          }
 
+
+
         const parentId = record.parentId;
         const existing = await findDuplicate(name, parentId);
 
@@ -695,7 +697,26 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
             })
         }
 
-        const [rename] = await db.update(files).set({ name: name, updatedAt: new Date() }).where(eq(files.id, id)).returning();
+        const oldPath = record.path
+        const dir = path.dirname(oldPath)
+        const newPath = path.join(dir, name)
+
+
+
+
+
+        if (oldPath !== newPath) {
+            await fsp.rename(oldPath, newPath)
+            if (record.isDirectory) {
+                await db.execute(sql`
+                    UPDATE files
+                    SET path = ${newPath} || SUBSTRING(path FROM ${oldPath.length + 1})
+                    WHERE path LIKE ${oldPath + '/%'} AND owner_username = ${req.session.username!}
+                `)
+        }
+        }
+
+        const [rename] = await db.update(files).set({ name, path: newPath, updatedAt: new Date() }).where(eq(files.id, id)).returning();
 
         await audit(req, 'rename', rename!, { oldName: record.name })
 
@@ -1186,8 +1207,9 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
         
 
 
-        const siblings = targetParentId ? await db.select({ name: files.name }).from(files).where(eq(files.parentId, targetParentId))
-        : await db.select({ name: files.name }).from(files).where(and(isNull(files.parentId), eq(files.ownerUsername, req.session.username!)))
+        const siblings = targetParentId
+            ? await db.select({ name: files.name }).from(files).where(and(eq(files.parentId, targetParentId), eq(files.ownerUsername, req.session.username!)))
+            : await db.select({ name: files.name }).from(files).where(and(isNull(files.parentId), eq(files.ownerUsername, req.session.username!)))
 
 
     const copyName = generateCopyName(record.name, siblings)
