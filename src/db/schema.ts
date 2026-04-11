@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, bigint, timestamp, jsonb, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, bigint, timestamp, jsonb, index, integer } from 'drizzle-orm/pg-core'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
@@ -38,7 +38,8 @@ export const pendingTwoFa = pgTable('pending_2fa', {
   ipAddress: text('ip_address'),
   otpHash: text('otp_hash').notNull(),
   approveTokenHash: text('approve_token_hash').notNull(),
-  approved:  boolean('approved').notNull().default(false),
+  approved:     boolean('approved').notNull().default(false),
+  otpAttempts:  integer('otp_attempts').notNull().default(0),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

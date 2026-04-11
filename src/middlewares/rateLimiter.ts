@@ -1,18 +1,28 @@
 import rateLimit from 'express-rate-limit';
+import { env } from '../config/env.js';
 
-
-
-/*
-*     LEMBRETE:
-*     Adicionar um env pra cuidar do windowMs e do Max de forma dinamica.
-*     lembrar de formatar no env.ts
-* 
-*/
-
-export const rateLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
+export const loginLimiter = rateLimit({
+    windowMs: env.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000,
+    max: env.RATE_LIMIT_MAX_ATTEMPTS,
     message: { error: "Muitas tentativas de login, aguarde antes de tentar novamente." },
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
 })
+
+export const approveLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 20,
+    message: { error: "Muitas tentativas, aguarde antes de tentar novamente." },
+    standardHeaders: true,
+    legacyHeaders: false,
+})
+
+export const verifyLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 5,
+    message: { error: "Muitas tentativas de verificação, aguarde antes de tentar novamente." },
+    standardHeaders: true,
+    legacyHeaders: false,
+})
+
+export const rateLimiter = loginLimiter

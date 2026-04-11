@@ -1,7 +1,7 @@
 import { RequestHandler } from 'express';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
-import { version } from '../../package.json';
+import pkg from '../../package.json' with { type: 'json' };
 import { env } from './env.js';
 
 
@@ -10,7 +10,7 @@ const options: swaggerJsdoc.Options = {
       openapi: '3.0.3',
       info: {
         title: 'Tux Vault API Documentation',
-        version,
+        version: pkg.version,
         description: 'Documentação tecnica de funcionalidades do TUXVAULT.',
         contact: { name: 'whoisleoo', email: 'leomtr.dev@gmail.com' }
       },

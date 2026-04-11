@@ -38,6 +38,11 @@ import cron from 'node-cron'
 *
 */
 
+if (env.DEV_MODE && env.NODE_ENV === 'production') {
+    console.error('DEV_MODE=true não é permitido em NODE_ENV=production, portanto o servidor não pode ser iniciado.');
+    process.exit(1);
+}
+
 if (env.DEV_MODE) {
     console.warn('ATENÇÃO: DEV_MODE está ativo, autenticação via SAMBA desativada.');
 }
@@ -64,14 +69,15 @@ app.use(session({
     cookie: {
         httpOnly: true,
         secure: env.NODE_ENV === 'production',
-        maxAge: 1000 * 60 * 60 * 8
+        sameSite: 'lax',
+        maxAge: env.SESSION_MAX_AGE_HOURS * 60 * 60 * 1000
     }
 }))
 
 
 cron.schedule('0 0 * * *', async () => {
     try {
-      await db.delete(auditLog).where(lt(auditLog.createdAt, sql`NOW() - INTERVAL '90 days'`))
+      await db.delete(auditLog).where(lt(auditLog.createdAt, sql`NOW() - INTERVAL '1 day' * ${env.AUDIT_LOG_RETENTION_DAYS}`))
   
       logger.info('Limpeza do registro de auditoria executada com sucesso.')
     } catch (err) {
@@ -145,12 +151,18 @@ if (env.NODE_ENV === 'production') {
 *    tratado em uma das rotas, ele provavelmente vai ser mostrado por esse handler.
 *
 */
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Error & { code?: string }, req: Request, res: Response, next: NextFunction) => {
     if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
             return res.status(413).json({ error: `Arquivo muito grande. O limite por upload é ${env.UPLOAD_MAX_SIZE_GB}GB.` })
         }
         return res.status(400).json({ error: err.message })
+    }
+    if (err.message === 'Request aborted') {
+        return res.status(499).end()
+    }
+    if (err.code === 'ENOSPC') {
+        return res.status(507).json({ error: 'Armazenamento insuficiente no servidor.' })
     }
     logger.error(err, 'Erro não tratado.');
     res.status(500).json({
@@ -164,8 +176,8 @@ async function start() {
     const server = app.listen(PORT, () => {
         console.log(`Tuxvault API is running at http://localhost:${PORT}`)
     })
-    server.requestTimeout  = 30 * 60 * 1000  
-    server.headersTimeout  = 31 * 60 * 1000 
+    server.requestTimeout  = env.REQUEST_TIMEOUT_MINUTES * 60 * 1000
+    server.headersTimeout  = (env.REQUEST_TIMEOUT_MINUTES + 1) * 60 * 1000
 }
 
 start()

@@ -108,11 +108,12 @@ file.get('/search', requireAuth, async (req: Request, res: Response) => {
         const q = (req.query.q as string ?? '').trim()
         if (!q) return res.status(200).json([])
 
+        const escaped = q.replace(/[%_\\]/g, '\\$&')
         const result = await db.select().from(files).where(
             and(
                 eq(files.ownerUsername, req.session.username!),
                 eq(files.inTrash, false),
-                ilike(files.name, `%${q}%`)
+                ilike(files.name, `%${escaped}%`)
             )
         ).orderBy(files.isDirectory, files.name)
 
@@ -157,7 +158,7 @@ file.get('/search', requireAuth, async (req: Request, res: Response) => {
  *       507:
  *         description: Armazenamento insuficiente
  */
-file.post('/upload', requireAuth, upload.fields([{ name: 'file', maxCount: 20 }]), async (req: Request, res: Response) => {
+file.post('/upload', requireAuth, upload.fields([{ name: 'file', maxCount: 500 }]), async (req: Request, res: Response) => {
     try{
         const uploadedFiles = (req.files as Record<string, Express.Multer.File[]>)?.['file'] ?? [];
 
@@ -1057,6 +1058,10 @@ file.post('/upload-folder', requireAuth, upload.fields([{ name: 'file', maxCount
 
         for (const p of relativePaths) {
             if (/(\.\.[\\/])|(^[\\/])/.test(p)) {
+                return res.status(400).json({ error: "Path inválido detectado." });
+            }
+            const normalized = path.posix.normalize(p)
+            if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
                 return res.status(400).json({ error: "Path inválido detectado." });
             }
         }

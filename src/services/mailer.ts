@@ -8,7 +8,7 @@ import { env } from '../config/env.js';
 const transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
-    secure: false, 
+    secure: env.SMTP_SECURE,
     auth: {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
@@ -76,7 +76,7 @@ export async function sendOtp(username: string, otp: string, pendingId: string, 
 
               <!-- Warning -->
               <p style="margin:0;color:#555555;font-size:12px;line-height:1.7;">
-                Expira em <span style="color:#ffffff;">5 minutos</span>. Se não reconhece esta tentativa, ignore este email.
+                Expira em <span style="color:#ffffff;">${env.OTP_EXPIRY_MINUTES} minuto${env.OTP_EXPIRY_MINUTES === 1 ? '' : 's'}</span>. Se não reconhece esta tentativa, ignore este email.
               </p>
 
             </td>

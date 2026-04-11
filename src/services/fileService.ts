@@ -175,12 +175,13 @@ export async function copyFolderService(sourceId: string, username: string, copy
             SELECT id, name, path AS disk_path, is_directory, parent_id,
                    size, mime_type, extension, 0 AS depth
             FROM files
-            WHERE id = ${sourceId}
+            WHERE id = ${sourceId} AND owner_username = ${username}
             UNION ALL
             SELECT f.id, f.name, f.path, f.is_directory, f.parent_id,
                    f.size, f.mime_type, f.extension, tree.depth + 1
             FROM files f
             INNER JOIN tree ON f.parent_id = tree.id
+            WHERE f.owner_username = ${username}
         )
         SELECT * FROM tree ORDER BY depth
     `)

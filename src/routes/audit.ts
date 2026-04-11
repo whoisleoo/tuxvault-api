@@ -59,8 +59,9 @@ audit.get('/', requireAdmin, async (req: Request, res: Response) => {
         *     TODO: Adicionar cronometro pra deletar registro de auditoria pra
         *      não estrapolar o banco.
         */
-        const [{ total }] = await db.select({ total: count() }).from(auditLog)
+        const totalResult = await db.select({ total: count() }).from(auditLog)
             .leftJoin(users, eq(auditLog.userId, users.id)).where(where);
+        const total = totalResult[0]?.total ?? 0;
 
 
 

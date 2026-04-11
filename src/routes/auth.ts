@@ -6,7 +6,8 @@ import { eq } from 'drizzle-orm'
 import { sambaAuth } from '../services/sambaAuth.js';
 import { sendOtp } from '../services/mailer.js';
 import { randomInt, createHash, randomBytes } from 'crypto';
-import { rateLimiter } from '../middlewares/rateLimiter.js';
+import { loginLimiter, approveLimiter, verifyLimiter } from '../middlewares/rateLimiter.js';
+import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { handleError } from '../utils/errorHandler.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
@@ -61,7 +62,7 @@ const verifySchema = z.object({
  *       500:
  *         description: Erro interno
  */
-auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
+auth.post('/login', loginLimiter, async (req: Request, res: Response) => {
     
     try{
         const userIp = req.ip ?? null;
@@ -97,7 +98,7 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
             otpHash,
             approveTokenHash,
             ipAddress: userIp,
-            expiresAt: new Date(Date.now() + 5 * 60 * 1000)
+            expiresAt: new Date(Date.now() + env.OTP_EXPIRY_MINUTES * 60 * 1000)
         }).returning();
 
         if(!pending){
@@ -145,7 +146,7 @@ auth.post('/login', rateLimiter, async (req: Request, res: Response) => {
  *       410:
  *         description: Código expirado
  */
-auth.get('/approve/:id', rateLimiter, async (req: Request, res: Response) => {
+auth.get('/approve/:id', approveLimiter, async (req: Request, res: Response) => {
     try{
     const id = req.params['id'] as string;
     const token = req.query.token as string;
@@ -189,18 +190,14 @@ auth.get('/approve/:id', rateLimiter, async (req: Request, res: Response) => {
     const [approved] = await db.update(pendingTwoFa).set({ approved: true }).where(eq(pendingTwoFa.id, id)).returning();
 
     if(!approved){
-        return res.status(500).json({
-            error: "Erro interno no servidor."
-        })
+        return res.redirect(`${env.APP_URL}/approve?status=error`)
     }
-    
 
-    return res.status(200).json({
-        message: "Usuário aprovado."    
-    })
+    return res.redirect(`${env.APP_URL}/approve?status=success`)
 
 }catch(err){
-    return handleError(res, err, 'Erro ao aprovar usuário.')
+    logger.error(err, 'Erro ao aprovar usuário.')
+    return res.redirect(`${env.APP_URL}/approve?status=error`)
 }
 
 });
@@ -241,7 +238,7 @@ auth.get('/approve/:id', rateLimiter, async (req: Request, res: Response) => {
  *       410:
  *         description: Código expirado
  */
-auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
+auth.post('/verify', verifyLimiter, async (req: Request, res: Response) => {
     const result = verifySchema.safeParse(req.body);
 
     if(!result.success){
@@ -278,11 +275,23 @@ auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
             })
         }
 
+        const MAX_OTP_ATTEMPTS = 5;
+        if (searchPending[0].otpAttempts >= MAX_OTP_ATTEMPTS) {
+            await db.delete(pendingTwoFa).where(eq(pendingTwoFa.id, pendingId))
+            
+            return res.status(429).json({ error: "Muitas tentativas incorretas. Faça login novamente."})
+        }
+
+
         const hashOtp = createHash('sha256').update(otp).digest('hex');
 
         if(searchPending[0].otpHash !== hashOtp){
+            await db.update(pendingTwoFa).set({ otpAttempts: searchPending[0].otpAttempts + 1 }).where(eq(pendingTwoFa.id, pendingId))
+            const remaining = MAX_OTP_ATTEMPTS - searchPending[0].otpAttempts - 1
+
+
             return res.status(401).json({
-                message: "Código inválido."
+                message: remaining > 0 ? `Código inválido. ${remaining} tentativa(s) restante(s).` : "Código inválido."
             })
         }
 
@@ -325,7 +334,7 @@ auth.post('/verify', rateLimiter, async (req: Request, res: Response) => {
  *       500:
  *         description: Erro ao encerrar sessão
  */
-auth.post('/logout', async (req: Request, res: Response) => {
+auth.post('/logout', requireAuth, async (req: Request, res: Response) => {
     try{
 
         req.session.destroy((err) =>{
@@ -382,8 +391,8 @@ auth.post('/logout', async (req: Request, res: Response) => {
  *       200:
  *         description: IP banido
  */
-auth.post('/honeypot', async (req: Request, res: Response) => {
-    const ip = req.ip
+auth.post('/honeypot', loginLimiter, async (req: Request, res: Response) => {
+    const ip = req.socket.remoteAddress ?? req.ip
     if (ip) {
         banIp(ip, 'honeypot-admin').catch(err => logger.error(err, 'Erro ao banir IP via honeypot.'))
         logger.warn({ ip }, 'Honeypot /admin triggered — IP banido.')
