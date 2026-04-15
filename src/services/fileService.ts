@@ -12,30 +12,30 @@ import * as fsp from 'fs/promises';
 
 export class NotFoundError extends Error {}
 
-export async function findOwned(id: string, username: string){
-    const [record] = await db.select().from(files).where(and(eq(files.id, id), eq(files.ownerUsername, username)));
+export async function findOwned(id: string){
+    const [record] = await db.select().from(files).where(eq(files.id, id));
 
     if(!record) throw new NotFoundError('Arquivo não encontrado.');
-    
+
     return record;
 }
 
 
 
-export async function validateParent(parentId: string, username: string){
-    const [parent] = await db.select().from(files).where(and(eq(files.id, parentId), eq(files.ownerUsername, username)));
+export async function validateParent(parentId: string){
+    const [parent] = await db.select().from(files).where(eq(files.id, parentId));
 
     if(!parent) throw new NotFoundError('Pasta de destino não encontrada.');
     if(!parent.isDirectory) throw new Error('O destino não é uma pasta.')
 
-        return parent;
+    return parent;
 }
 
 
 export class QuotaError extends Error {};
 
-export async function checkQuota(username: string, incomingSize: number){
-    const { used, total } = await getStorageInfo(username);
+export async function checkQuota(incomingSize: number){
+    const { used, total } = await getStorageInfo();
 
     if(used + incomingSize > total) throw new QuotaError('Armazenamento insuficiente.');
 }
@@ -175,13 +175,12 @@ export async function copyFolderService(sourceId: string, username: string, copy
             SELECT id, name, path AS disk_path, is_directory, parent_id,
                    size, mime_type, extension, 0 AS depth
             FROM files
-            WHERE id = ${sourceId} AND owner_username = ${username}
+            WHERE id = ${sourceId}
             UNION ALL
             SELECT f.id, f.name, f.path, f.is_directory, f.parent_id,
                    f.size, f.mime_type, f.extension, tree.depth + 1
             FROM files f
             INNER JOIN tree ON f.parent_id = tree.id
-            WHERE f.owner_username = ${username}
         )
         SELECT * FROM tree ORDER BY depth
     `)

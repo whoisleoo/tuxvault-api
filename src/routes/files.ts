@@ -90,9 +90,9 @@ file.get('/', requireAuth, async (req: Request, res: Response) => {
 
 
         if(!parentId){
-            result = await db.select().from(files).where(and(isNull(files.parentId), eq(files.inTrash, false), eq(files.ownerUsername, req.session.username!)))
+            result = await db.select().from(files).where(and(isNull(files.parentId), eq(files.inTrash, false)))
         }else{
-            result = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.inTrash, false), eq(files.ownerUsername, req.session.username!)))
+            result = await db.select().from(files).where(and(eq(files.parentId, parentId), eq(files.inTrash, false)))
         }
 
         return res.status(200).json(result);
@@ -111,7 +111,6 @@ file.get('/search', requireAuth, async (req: Request, res: Response) => {
         const escaped = q.replace(/[%_\\]/g, '\\$&')
         const result = await db.select().from(files).where(
             and(
-                eq(files.ownerUsername, req.session.username!),
                 eq(files.inTrash, false),
                 ilike(files.name, `%${escaped}%`)
             )
@@ -170,11 +169,11 @@ file.post('/upload', requireAuth, upload.fields([{ name: 'file', maxCount: 500 }
 
         const { parentId } = uploadBodySchema.parse(req.body);
 
-        if(parentId) await validateParent(parentId, req.session.username!)
+        if(parentId) await validateParent(parentId)
 
         const incomingSize = uploadedFiles.reduce((acc, f) => acc + f.size, 0);
         try {
-            await checkQuota(req.session.username!, incomingSize)
+            await checkQuota(incomingSize)
         } catch (quotaErr) {
             await Promise.allSettled(uploadedFiles.map(f => fsp.unlink(f.path)))
             throw quotaErr
@@ -278,7 +277,7 @@ file.post('/folder', requireAuth, async (req: Request, res: Response) => {
 
 
         if(parentId){
-            const parentFolder = await validateParent(parentId, req.session.username!)
+            const parentFolder = await validateParent(parentId)
 
             const existing = await findDuplicate(name, parentId);
 
@@ -376,7 +375,7 @@ file.post('/folder', requireAuth, async (req: Request, res: Response) => {
 file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
     try{
      const id = req.params['id'] as string;
-     const record = await findOwned(id, req.session.username!)
+     const record = await findOwned(id)
 
      if(record.isDirectory){
         return res.status(400).json({
@@ -432,7 +431,7 @@ file.get('/download/:id', requireAuth, async (req: Request, res: Response) => {
 file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) => {
     try{
      const id = req.params['id'] as string;
-     const record = await findOwned(id, req.session.username!)
+     const record = await findOwned(id)
 
      if(!record.isDirectory){
         return res.status(400).json({
@@ -445,15 +444,14 @@ file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) =
             SELECT id, name, path AS disk_path, is_directory, parent_id,
                    name::text AS rel_path
             FROM files
-            WHERE id = ${id} AND owner_username = ${req.session.username!}
-    
+            WHERE id = ${id}
+
             UNION ALL
-    
+
             SELECT f.id, f.name, f.path AS disk_path, f.is_directory, f.parent_id,
                    (tree.rel_path || '/' || f.name)::text AS rel_path
             FROM files f
             INNER JOIN tree ON f.parent_id = tree.id
-            WHERE f.owner_username = ${req.session.username!}
         )
         SELECT disk_path, rel_path, is_directory FROM tree
     `);
@@ -538,7 +536,7 @@ file.get('/download-zip/:id', requireAuth, async (req: Request, res: Response) =
 file.get('/preview/:id', requireAuth, async (req: Request, res: Response) => {
     try {
         const id = req.params['id'] as string;
-        const record = await findOwned(id, req.session.username!)
+        const record = await findOwned(id)
 
         if(record.isDirectory){
             return res.status(400).json({ error: "Não é possível visualizar uma pasta." })
@@ -615,7 +613,7 @@ file.get('/preview/:id', requireAuth, async (req: Request, res: Response) => {
 file.delete('/trash/:id', requireAuth, async (req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string;
-        const record = await findOwned(id, req.session.username!)
+        const record = await findOwned(id)
 
          if(record.inTrash){
             return res.status(400).json({
@@ -678,7 +676,7 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string;
         const { name } = renameSchema.parse(req.body);
-        const record = await findOwned(id, req.session.username!)
+        const record = await findOwned(id)
 
         if(record.inTrash){
             return res.status(400).json({
@@ -711,7 +709,7 @@ file.patch('/rename/:id', requireAuth, async (req: Request, res: Response) => {
                 await db.execute(sql`
                     UPDATE files
                     SET path = ${newPath} || SUBSTRING(path FROM ${oldPath.length + 1})
-                    WHERE path LIKE ${oldPath + '/%'} AND owner_username = ${req.session.username!}
+                    WHERE path LIKE ${oldPath + '/%'}
                 `)
         }
         }
@@ -769,7 +767,7 @@ file.get('/favorites', requireAuth, async (req: Request, res: Response) => {
  */
 file.get('/trash', requireAuth, async (req: Request, res: Response) => {
     try{    
-        const result = await db.select().from(files).where(and(eq(files.inTrash, true), eq(files.ownerUsername, req.session.username!)));
+        const result = await db.select().from(files).where(eq(files.inTrash, true));
 
 
         return res.status(200).json(result);
@@ -805,7 +803,7 @@ file.get('/trash', requireAuth, async (req: Request, res: Response) => {
 file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string;
-        const record = await findOwned(id, req.session.username!)
+        const record = await findOwned(id)
 
         if(!record.inTrash){
             return res.status(400).json({
@@ -861,7 +859,7 @@ file.delete('/trash/:id/permanent', requireAuth, async (req: Request, res: Respo
 file.patch('/trash/:id/restore', requireAuth, async (req: Request, res: Response) => {
     try{
         const id = req.params['id'] as string;
-        const record = await findOwned(id, req.session.username!)
+        const record = await findOwned(id)
 
         if(!record.inTrash){
             return res.status(400).json({
@@ -924,7 +922,7 @@ file.patch('/:id/favorite', requireAuth, async (req: Request, res: Response) => 
     try {
         const id = req.params['id'] as string;
         const { favorited } = favoriteSchema.parse(req.body);
-        const record = await findOwned(id, req.session.username!)
+        const record = await findOwned(id)
 
         const [updated] = await db.update(files).set({ favorited, updatedAt: new Date() }).where(eq(files.id, id)).returning();
 
@@ -949,8 +947,7 @@ file.get('/storage/breakdown', requireAuth, async (req: Request, res: Response) 
                 COALESCE(SUM(CASE WHEN LOWER(extension) = ANY(ARRAY['js','ts','jsx','tsx','py','java','c','cpp','go','rs','php','rb','swift','kt','html','css','scss','json','yaml','yml','xml','sh','bash','sql','vue','svelte','lua','r']) THEN size ELSE 0 END), 0)::bigint AS code,
                 COALESCE(SUM(size), 0)::bigint AS total
             FROM files
-            WHERE owner_username = ${req.session.username!}
-            AND in_trash = false
+            WHERE in_trash = false
             AND is_directory = false
         `)
         const row = result.rows[0] as Record<string, string>
@@ -994,7 +991,7 @@ file.get('/storage/breakdown', requireAuth, async (req: Request, res: Response) 
  */
 file.get('/storage', requireAuth, async (req: Request, res: Response) => {
     try {
-        const storage = await getStorageInfo(req.session.username!);
+        const storage = await getStorageInfo();
 
         return res.status(200).json({
             storage
@@ -1065,13 +1062,13 @@ file.post('/upload-folder', requireAuth, upload.fields([{ name: 'file', maxCount
         let baseParentId: string | null = parentId ?? null;
 
         if (parentId) {
-            const parentFolder = await validateParent(parentId, req.session.username!)
+            const parentFolder = await validateParent(parentId)
             basePath = parentFolder.path;
         }
 
         const incomingSize = uploadedFiles.reduce((acc, f) => acc + f.size, 0);
         try {
-            await checkQuota(req.session.username!, incomingSize)
+            await checkQuota(incomingSize)
         } catch (quotaErr) {
             await Promise.allSettled(uploadedFiles.map(f => fsp.unlink(f.path)))
             throw quotaErr
@@ -1129,14 +1126,13 @@ file.post('/upload-folder', requireAuth, upload.fields([{ name: 'file', maxCount
  */
 file.get('/folders/:id/size', requireAuth, async (req: Request, res: Response) => {
     const id = req.params['id'] as string;
-    const username = req.session.username!
 
     if (!UUID_REGEX.test(id)) {
         return res.status(400).json({ error: 'ID inválido.' })
     }
 
     try {
-        const size = await getStorageFolder(id, username)
+        const size = await getStorageFolder(id)
         
         return res.json({ size })
 
@@ -1180,7 +1176,7 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
         const id = req.params['id'] as string
         const { parentId: destinationId } = copyBodySchema.parse(req.body)
         
-        const record = await findOwned(id, req.session.username!);
+        const record = await findOwned(id);
 
         if(record.inTrash){
             return res.status(400).json({
@@ -1192,30 +1188,29 @@ file.post('/:id/copy', requireAuth, async(req: Request, res: Response) => {
         let targetParentId = record.parentId;
 
         let destPath = path.dirname(record.path);
-        
+
         if(destinationId !== undefined){
-            if(destinationId === null){ //ve se ta na raiz 
+            if(destinationId === null){ //ve se ta na raiz
                 targetParentId = null;
                 destPath = env.VAULT_PATH;
             } else {
-                let destination = await validateParent(destinationId, req.session.username!);
+                let destination = await validateParent(destinationId);
                 targetParentId = destination.id;
                 destPath = destination.path;
             }
         }
-        
-        
+
 
 
         const siblings = targetParentId
-            ? await db.select({ name: files.name }).from(files).where(and(eq(files.parentId, targetParentId), eq(files.ownerUsername, req.session.username!)))
-            : await db.select({ name: files.name }).from(files).where(and(isNull(files.parentId), eq(files.ownerUsername, req.session.username!)))
+            ? await db.select({ name: files.name }).from(files).where(eq(files.parentId, targetParentId))
+            : await db.select({ name: files.name }).from(files).where(isNull(files.parentId))
 
 
     const copyName = generateCopyName(record.name, siblings)
 
     if(!record.isDirectory){
-        await checkQuota(req.session.username!, record.size ?? 0)
+        await checkQuota(record.size ?? 0)
 
 
         
@@ -1300,7 +1295,7 @@ file.patch('/:id/move', requireAuth, async (req: Request, res: Response) => {
 
         const id = req.params['id'] as string;
         const { targetId } = moveSchema.parse(req.body)
-        const record = await findOwned(id, req.session.username!)
+        const record = await findOwned(id)
 
 
 
@@ -1324,7 +1319,7 @@ file.patch('/:id/move', requireAuth, async (req: Request, res: Response) => {
         let destPath = env.VAULT_PATH
 
         if (targetId) {
-            const target = await validateParent(targetId, req.session.username!)
+            const target = await validateParent(targetId)
 
             if(record.isDirectory && target.path.startsWith(record.path + '/')) {
                 return res.status(400).json({ error: "Não é possível mover uma pasta para dentro de um de seus subdiretórios." })
@@ -1358,7 +1353,6 @@ file.patch('/:id/move', requireAuth, async (req: Request, res: Response) => {
                     UPDATE files
                     SET path = ${newPath} || SUBSTR(path, ${oldPath.length + 1})
                     WHERE path LIKE ${oldPath + '/%'}
-                    AND owner_username = ${req.session.username!}
                 `)
             }
         })

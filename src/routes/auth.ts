@@ -82,7 +82,7 @@ auth.post('/login', loginLimiter, async (req: Request, res: Response) => {
 
         if(resultAuth === null){
             return res.status(401).json({
-                error: "Usuário sem permissão."
+                error: "Usuário sem permissão ou não existente."
             })
         }
         const role = resultAuth.role;
@@ -278,7 +278,7 @@ auth.post('/verify', verifyLimiter, async (req: Request, res: Response) => {
         const MAX_OTP_ATTEMPTS = 5;
         if (searchPending[0].otpAttempts >= MAX_OTP_ATTEMPTS) {
             await db.delete(pendingTwoFa).where(eq(pendingTwoFa.id, pendingId))
-            
+
             return res.status(429).json({ error: "Muitas tentativas incorretas. Faça login novamente."})
         }
 
@@ -392,7 +392,7 @@ auth.post('/logout', requireAuth, async (req: Request, res: Response) => {
  *         description: IP banido
  */
 auth.post('/honeypot', loginLimiter, async (req: Request, res: Response) => {
-    const ip = req.socket.remoteAddress ?? req.ip
+    const ip = req.ip
     if (ip) {
         banIp(ip, 'honeypot-admin').catch(err => logger.error(err, 'Erro ao banir IP via honeypot.'))
         logger.warn({ ip }, 'Honeypot /admin triggered — IP banido.')

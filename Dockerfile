@@ -6,7 +6,7 @@ COPY . .
 RUN npm run build
 
 FROM node:22-alpine
-RUN apk add --no-cache samba-client openssh-client
+RUN apk add --no-cache samba-client samba-common-tools openssh-client
 
 WORKDIR /app
 COPY package*.json ./
